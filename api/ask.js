@@ -2,17 +2,16 @@ import { DATASET_CONTEXT } from "./_context.js";
 
 const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 const FALLBACK_MODELS = [
-  "gemini-flash-latest",
-  "gemini-3.8-flash",
-  "gemini-3-flash",
-  "gemini-3-flash-preview",
   "gemini-flash-lite-latest",
+  "gemini-2.5-flash-lite",
   "gemini-3.1-flash-lite",
   "gemini-2.5-flash",
-  "gemini-2.5-flash-lite",
+  "gemini-flash-latest",
+  "gemini-3-flash-preview",
   "gemma-3-27b-it",
-  "gemma-3-12b-it",
 ];
+const REASONING_LEVELS = ["none", "minimal", null];
+const CALL_TIMEOUT_MS = 12000;
 
 let workingModel = null;
 const MAX_QUESTION_CHARS = 600;
@@ -94,15 +93,16 @@ export async function POST(request) {
   let lastFailure = null;
   try {
     for (const model of models) {
-      for (const withReasoning of [true, false]) {
-        const result = await callGemini(apiKey, model, messages, withReasoning);
+      const levels = model.startsWith("gemma") ? [null] : REASONING_LEVELS;
+      for (const reasoning of levels) {
+        const result = await callGemini(apiKey, model, messages, reasoning);
         if (result.answer) {
           workingModel = model;
           return json({ answer: result.answer });
         }
         lastFailure = result;
-        console.error("gemini error", model, withReasoning, result.status, result.detail);
-        if (result.status === 400 && withReasoning) continue;
+        console.error("gemini error", model, reasoning, result.status, result.detail);
+        if (result.status === 400 && reasoning) continue;
         break;
       }
       if (lastFailure && ([401, 403, 429].includes(lastFailure.status) || /api key/i.test(lastFailure.detail || ""))) break;
@@ -114,15 +114,22 @@ export async function POST(request) {
   return json({ error: describeFailure(lastFailure) }, 502);
 }
 
-async function callGemini(apiKey, model, messages, withReasoning) {
+async function callGemini(apiKey, model, messages, reasoning) {
   const isGemma = model.startsWith("gemma");
-  const body = { model, messages: isGemma ? foldSystemPrompt(messages) : messages, max_tokens: 1200, temperature: 0.2 };
-  if (withReasoning && !isGemma) body.reasoning_effort = "low";
-  const response = await fetch(GEMINI_URL, {
-    method: "POST",
-    headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  const body = { model, messages: isGemma ? foldSystemPrompt(messages) : messages, max_tokens: 600, temperature: 0.2 };
+  if (reasoning) body.reasoning_effort = reasoning;
+  let response;
+  try {
+    response = await fetch(GEMINI_URL, {
+      method: "POST",
+      headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
+    });
+  } catch (error) {
+    if (error?.name === "TimeoutError" || error?.name === "AbortError") return { status: 504, detail: `${model} timed out.` };
+    throw error;
+  }
   if (!response.ok) {
     const text = await response.text();
     let detail = text.slice(0, 300);

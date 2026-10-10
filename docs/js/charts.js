@@ -278,7 +278,7 @@ const Charts = {
           Tooltip.show(event, step.model, [
             ["Cold penalty", `${Math.round(step.penalty_minutes * 60)}s`],
             ["90% interval", `${Math.round(step.ci_low * 60)}–${Math.round(step.ci_high * 60)}s`],
-            ["Model R²", step.r_squared.toFixed(2)],
+            ["Out-of-sample R²", step.cv_r_squared.toFixed(2)],
           ])
         )
         .on("mousemove", Tooltip.move)
