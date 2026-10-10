@@ -925,6 +925,71 @@ const Charts = {
         .text(`${label} ${Format.clock(value)}`);
     });
   },
+  windCompass(selector, weather) {
+    const container = d3.select(selector);
+    container.selectAll("*").remove();
+    const width = container.node().clientWidth;
+    const height = container.node().clientHeight;
+    const size = Math.min(width, height);
+    const svg = container.append("svg").attr("width", width).attr("height", height);
+    const g = svg.append("g").attr("transform", `translate(${width / 2},${height / 2})`);
+    const outer = size / 2 - 30;
+    const inner = outer * 0.28;
+    const fits = weather.bearing_profile.r_squared;
+    const bearings = weather.bearing_profile.bearings;
+    const radius = d3.scaleLinear().domain(d3.extent(fits)).range([inner, outer]);
+    const toXY = (deg, r) => [Math.sin((deg * Math.PI) / 180) * r, -Math.cos((deg * Math.PI) / 180) * r];
+    [inner, (inner + outer) / 2, outer].forEach((r) => g.append("circle").attr("r", r).attr("fill", "none").attr("stroke", "rgba(255,255,255,0.07)"));
+    [["N", 0], ["E", 90], ["S", 180], ["W", 270]].forEach(([label, deg]) => {
+      const [x, y] = toXY(deg, outer + 16);
+      g.append("text").attr("x", x).attr("y", y).attr("text-anchor", "middle").attr("dominant-baseline", "middle").attr("fill", Palette.muted).attr("font-size", 11).attr("letter-spacing", "0.15em").text(label);
+    });
+    const line = d3.lineRadial().angle((d) => (d.b * Math.PI) / 180).radius((d) => radius(d.r)).curve(d3.curveCardinalClosed);
+    const rows = bearings.map((b, i) => ({ b, r: fits[i] }));
+    g.append("path").datum(rows).attr("d", line).attr("fill", "rgba(69,180,207,0.12)").attr("stroke", Palette.sky).attr("stroke-width", 2);
+    const arrow = (deg, length, color, label, dy) => {
+      const [x, y] = toXY(deg, length);
+      g.append("line").attr("x1", 0).attr("y1", 0).attr("x2", x).attr("y2", y).attr("stroke", color).attr("stroke-width", 2.5).attr("stroke-linecap", "round");
+      const head = toXY(deg, length + 1);
+      g.append("circle").attr("cx", head[0]).attr("cy", head[1]).attr("r", 4).attr("fill", color);
+      const [lx, ly] = toXY(deg, length + 14);
+      g.append("text").attr("x", lx).attr("y", ly + dy).attr("text-anchor", lx < 0 ? "end" : "start").attr("fill", Palette.ink).attr("font-size", 11).text(label);
+    };
+    arrow(weather.work_bearing_deg, outer * 0.92, Palette.orange, `to work · ${Math.round(weather.work_bearing_deg)}°`, -6);
+    const evening = (weather.by_direction.Home.wind_from_deg + 180) % 360;
+    arrow(evening, outer * 0.55, Palette.sky, "evening wind blows", 12);
+    g.append("circle").attr("r", 3).attr("fill", Palette.ink);
+  },
+
+  windScatter(selector, weather) {
+    const frame = createFrame(selector, { top: 16, right: 16, bottom: 40, left: 48 });
+    const { g, width, height } = frame;
+    const points = weather.points;
+    const x = d3.scaleLinear().domain(d3.extent(points, (d) => d.headwind)).nice().range([0, width]);
+    const y = d3.scaleLinear().domain(d3.extent(points, (d) => d.adjusted_seconds)).nice().range([height, 0]);
+    drawAxes(frame, x, y, { xFormat: (d) => `${d} mph`, yFormat: (d) => `${d > 0 ? "+" : ""}${d}s`, xLabel: "Headwind (negative = tailwind)" });
+    g.append("line").attr("x1", x(0)).attr("x2", x(0)).attr("y1", 0).attr("y2", height).attr("stroke", Palette.muted).attr("stroke-opacity", 0.4);
+    g.append("line").attr("x1", 0).attr("x2", width).attr("y1", y(0)).attr("y2", y(0)).attr("stroke", Palette.muted).attr("stroke-opacity", 0.4);
+    const meanX = d3.mean(points, (d) => d.headwind);
+    const meanY = d3.mean(points, (d) => d.adjusted_seconds);
+    const slope = weather.headwind_seconds_per_mph;
+    const [x0, x1] = x.domain();
+    g.append("line")
+      .attr("x1", x(x0)).attr("y1", y(meanY + slope * (x0 - meanX)))
+      .attr("x2", x(x1)).attr("y2", y(meanY + slope * (x1 - meanX)))
+      .attr("stroke", Palette.ink).attr("stroke-width", 2.5).attr("stroke-linecap", "round");
+    g.selectAll("circle.pt").data(points).join("circle")
+      .attr("cx", (d) => x(d.headwind)).attr("cy", (d) => y(d.adjusted_seconds)).attr("r", 4.5)
+      .attr("fill", (d) => DirectionColor[d.destination]).attr("fill-opacity", 0.75)
+      .on("mouseenter", (event, d) => Tooltip.show(event, `${Format.date(Format.parseDate(d.date))} · to ${d.destination.toLowerCase()}`, [
+        ["Wind", `${d.wind_speed_10m.toFixed(1)} mph from ${Math.round(d.wind_direction_10m)}°`],
+        ["Headwind", `${d.headwind.toFixed(1)} mph`],
+        ["vs. expected", `${d.adjusted_seconds > 0 ? "+" : ""}${Math.round(d.adjusted_seconds)}s`],
+      ]))
+      .on("mousemove", Tooltip.move).on("mouseleave", Tooltip.hide);
+    g.append("text").attr("class", "annotation").attr("x", width).attr("y", 12).attr("text-anchor", "end").text(`${slope.toFixed(1)} s per mph of headwind`);
+  },
+
 };
 
 function roundedTop(x, y, w, h, base) {

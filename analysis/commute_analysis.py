@@ -1,16 +1,12 @@
 import argparse
 import json
 import time
+import urllib.parse
+import urllib.request
 import warnings
 from pathlib import Path
 
-import matplotlib
-
-matplotlib.use("Agg")
-
 import lightgbm as lgb
-import matplotlib.dates as mdates
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import shap
@@ -37,28 +33,25 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ANALYSIS_DIR = PROJECT_ROOT / "analysis"
 RAW_WORKBOOK = ANALYSIS_DIR / "data" / "commute_trips.xlsx"
 PROCESSED_DIR = ANALYSIS_DIR / "data"
-REPORTS_DIR = PROJECT_ROOT / "reports"
-FIGURES_DIR = REPORTS_DIR / "figures"
 SITE_DATA_FILE = PROJECT_ROOT / "docs" / "data" / "analysis.js"
-RESULTS_JSON = REPORTS_DIR / "results.json"
 ASSISTANT_CONTEXT_FILE = PROJECT_ROOT / "api" / "_context.js"
+WEATHER_FILE = ANALYSIS_DIR / "data" / "weather_hourly.csv"
+WEATHER_TRIPS_FILE = ANALYSIS_DIR / "data" / "trips_weather.csv"
+PITTSBURGH = (40.4406, -79.9959)
+WEATHER_FIELDS = [
+    "temperature_2m",
+    "apparent_temperature",
+    "relative_humidity_2m",
+    "precipitation",
+    "wind_speed_10m",
+    "wind_direction_10m",
+    "wind_gusts_10m",
+    "cloud_cover",
+]
+DEPARTURE_WINDOWS = {"Work": (5, 10), "Home": (14, 20)}
 
 RANDOM_STATE = 2026
 PRIMARY_ROUTE = "A"
-
-BRAND = {
-    "navy": "#022a34",
-    "navy_deep": "#011c23",
-    "navy_soft": "#0b3a47",
-    "orange": "#f27b38",
-    "orange_soft": "#f6a273",
-    "sky": "#45b4cf",
-    "ink": "#e8eef0",
-    "muted": "#8fa7ae",
-    "grid": "#1d4b57",
-}
-
-DESTINATION_COLORS = {"Work": BRAND["sky"], "Home": BRAND["orange"]}
 
 MODEL_FEATURES = [
     "is_home",
@@ -892,6 +885,165 @@ def surface_temperature_by_ride(estimator, df: pd.DataFrame) -> dict:
     return output
 
 
+def download_weather(dates: pd.Series) -> pd.DataFrame:
+    frames = []
+    for _, span in dates.groupby(dates.dt.year):
+        query = {
+            "latitude": PITTSBURGH[0],
+            "longitude": PITTSBURGH[1],
+            "start_date": span.min().strftime("%Y-%m-%d"),
+            "end_date": span.max().strftime("%Y-%m-%d"),
+            "hourly": ",".join(WEATHER_FIELDS),
+            "temperature_unit": "fahrenheit",
+            "wind_speed_unit": "mph",
+            "precipitation_unit": "inch",
+            "timezone": "America/New_York",
+        }
+        url = "https://archive-api.open-meteo.com/v1/archive?" + urllib.parse.urlencode(query)
+        with urllib.request.urlopen(url, timeout=60) as response:
+            hourly = pd.DataFrame(json.load(response)["hourly"])
+        frames.append(hourly)
+    weather = pd.concat(frames)
+    weather["time"] = pd.to_datetime(weather["time"])
+    return weather[weather["time"].dt.normalize().isin(dates.unique())].sort_values("time")
+
+
+def load_weather(df: pd.DataFrame) -> pd.DataFrame:
+    ride_days = df["date"].dt.normalize()
+    if WEATHER_FILE.exists():
+        weather = pd.read_csv(WEATHER_FILE, parse_dates=["time"])
+        if set(ride_days.unique()) <= set(weather["time"].dt.normalize().unique()):
+            return weather
+    weather = download_weather(ride_days)
+    weather.to_csv(WEATHER_FILE, index=False)
+    return weather
+
+
+def attach_weather(df: pd.DataFrame, weather: pd.DataFrame) -> pd.DataFrame:
+    weather = weather.assign(day=weather["time"].dt.normalize(), hour=weather["time"].dt.hour)
+    rows = []
+    for _, trip in df.iterrows():
+        start, end = DEPARTURE_WINDOWS[trip["destination"]]
+        window = weather[(weather["day"] == trip["date"]) & weather["hour"].between(start, end)]
+        gap = (window["temperature_2m"] - trip["temperature_f"]).abs()
+        match = window.loc[gap.idxmin()]
+        rows.append(
+            {
+                "trip_id": trip["trip_id"],
+                "departure_hour": int(match["hour"]),
+                "temperature_match_error": float(gap.min()),
+                **{field: float(match[field]) for field in WEATHER_FIELDS},
+            }
+        )
+    return df.merge(pd.DataFrame(rows), on="trip_id")
+
+
+def headwind(df: pd.DataFrame, work_bearing: float) -> pd.Series:
+    travel = np.where(df["is_home"] == 1, (work_bearing + 180) % 360, work_bearing)
+    return df["wind_speed_10m"] * np.cos(np.radians(df["wind_direction_10m"] - travel))
+
+
+def crosswind(df: pd.DataFrame, work_bearing: float) -> pd.Series:
+    travel = np.where(df["is_home"] == 1, (work_bearing + 180) % 360, work_bearing)
+    return (df["wind_speed_10m"] * np.sin(np.radians(df["wind_direction_10m"] - travel))).abs()
+
+
+def _wind_design(df: pd.DataFrame) -> np.ndarray:
+    return np.c_[
+        np.ones(len(df)),
+        df["is_home"],
+        df["temperature_f"],
+        df["temperature_f"] ** 2,
+        df["season_ride_number"],
+        df["log_days_since_last_ride"],
+        df["years_elapsed"],
+    ]
+
+
+def best_bearing(df: pd.DataFrame, bearings: np.ndarray) -> tuple[float, float, list[float]]:
+    base = _wind_design(df)
+    y = df["minutes"].to_numpy()
+    fits = []
+    for bearing in bearings:
+        X = np.c_[base, headwind(df, bearing)]
+        beta, *_ = np.linalg.lstsq(X, y, rcond=None)
+        residual = y - X @ beta
+        fits.append((float(residual @ residual), float(bearing), float(beta[-1])))
+    _, bearing, cost = min(fits)
+    if cost < 0:
+        bearing, cost = (bearing + 180) % 360, -cost
+    total = float(((y - y.mean()) ** 2).sum())
+    return bearing, cost, [round(1 - ssr / total, 4) for ssr, _, _ in fits]
+
+
+def wind_analysis(df: pd.DataFrame, reps: int = 500) -> dict:
+    primary = df[df["is_primary_route"]].reset_index(drop=True)
+    bearings = np.arange(0, 360, 5)
+    bearing, cost, profile = best_bearing(primary, bearings)
+
+    rng = np.random.default_rng(RANDOM_STATE)
+    groups = {day: np.where(primary["date"] == day)[0] for day in primary["date"].unique()}
+    days = list(groups)
+    boot_bearings, boot_costs = [], []
+    for _ in range(reps):
+        index = np.concatenate([groups[days[i]] for i in rng.integers(0, len(days), len(days))])
+        b, c, _ = best_bearing(primary.iloc[index].reset_index(drop=True), bearings)
+        boot_bearings.append(((b - bearing + 180) % 360) - 180)
+        boot_costs.append(c)
+
+    data = primary.assign(headwind=headwind(primary, bearing), crosswind=crosswind(primary, bearing))
+    base_formula = (
+        "minutes ~ is_home + temperature_f + I(temperature_f ** 2) + season_ride_number"
+        " + log_days_since_last_ride + years_elapsed"
+    )
+    base = smf.ols(base_formula, data=data).fit(cov_type="HC1")
+    with_wind = smf.ols(base_formula + " + headwind", data=data).fit(cov_type="HC1")
+    extras = {}
+    for term in ["precipitation", "wind_gusts_10m", "crosswind", "relative_humidity_2m", "cloud_cover"]:
+        fitted = smf.ols(base_formula + " + headwind + " + term, data=data).fit(cov_type="HC1")
+        extras[term] = {"estimate": round(float(fitted.params[term]), 4), "p_value": float(fitted.pvalues[term])}
+
+    adjusted = smf.ols(base_formula, data=data).fit()
+    points = data.assign(adjusted_seconds=adjusted.resid * 60)[["date", "destination", "headwind", "adjusted_seconds", "wind_speed_10m", "wind_direction_10m"]]
+
+    def circular_mean(angles):
+        radians = np.radians(angles)
+        return round(float(np.degrees(np.arctan2(np.sin(radians).mean(), np.cos(radians).mean())) % 360), 1)
+
+    by_direction = {
+        destination: {
+            "mean_wind_mph": round(float(group["wind_speed_10m"].mean()), 2),
+            "mean_headwind_mph": round(float(group["headwind"].mean()), 2),
+            "wind_from_deg": circular_mean(group["wind_direction_10m"]),
+            "share_headwind": round(float((group["headwind"] > 0).mean()), 3),
+        }
+        for destination, group in data.groupby("destination")
+    }
+    hours = df.groupby("destination")["departure_hour"].value_counts().sort_index()
+    return {
+        "source": "Open-Meteo historical reanalysis (ERA5), hourly, central Pittsburgh",
+        "work_bearing_deg": bearing,
+        "work_bearing_ci": [round(bearing + float(np.percentile(boot_bearings, 5))), round(bearing + float(np.percentile(boot_bearings, 95)))],
+        "headwind_seconds_per_mph": round(cost * 60, 2),
+        "headwind_seconds_ci": [round(float(np.percentile(boot_costs, 5)) * 60, 1), round(float(np.percentile(boot_costs, 95)) * 60, 1)],
+        "bearing_profile": {"bearings": bearings.tolist(), "r_squared": profile},
+        "r_squared_without_wind": round(float(base.rsquared), 4),
+        "r_squared_with_wind": round(float(with_wind.rsquared), 4),
+        "residual_sd_without_wind_s": round(float(np.sqrt(base.mse_resid)) * 60, 1),
+        "residual_sd_with_wind_s": round(float(np.sqrt(with_wind.mse_resid)) * 60, 1),
+        "home_penalty_without_wind": round(float(base.params["is_home"]), 3),
+        "home_penalty_with_wind": round(float(with_wind.params["is_home"]), 3),
+        "headwind_p_value": float(with_wind.pvalues["headwind"]),
+        "by_direction": by_direction,
+        "other_weather": extras,
+        "rainy_trips": int((df["precipitation"] > 0.01).sum()),
+        "temperature_match_error_median": round(float(df["temperature_match_error"].median()), 2),
+        "temperature_match_correlation": round(float(np.corrcoef(df["temperature_f"], df["temperature_2m"])[0, 1]), 3),
+        "departure_hours": {destination: {int(h): int(n) for h, n in hours[destination].items()} for destination in ["Work", "Home"]},
+        "points": json.loads(points.assign(date=points["date"].dt.strftime("%Y-%m-%d")).round(3).to_json(orient="records")),
+    }
+
+
 def _clock(minutes: float) -> str:
     total = round(minutes * 60)
     return f"{total // 60}:{total % 60:02d}"
@@ -984,6 +1136,9 @@ def build_context(df: pd.DataFrame, results: dict) -> str:
         + "; ".join(f"{a['date']} {a['destination']} route {a['route']}: {a['minutes']} vs {a['predicted']}" for a in modelling["anomalies"][:5])
         + ".",
         "",
+        "## Weather (added from Open-Meteo hourly reanalysis for central Pittsburgh)",
+        *weather_lines(results.get("weather")),
+        "",
         "## Caveats",
         "Small sample; departure time, wind, rain, traffic and elevation were not recorded; routes other than A have 7 trips between them; "
         "results are associations, not causal effects.",
@@ -999,241 +1154,34 @@ def build_context(df: pd.DataFrame, results: dict) -> str:
     return "\n".join(lines)
 
 
+def weather_lines(weather: dict | None) -> list[str]:
+    if not weather:
+        return []
+    home = weather["by_direction"]["Home"]
+    work = weather["by_direction"]["Work"]
+    rain = weather["other_weather"]["precipitation"]
+    return [
+        "Departure hour for each trip was estimated by matching the recorded temperature to the hourly temperature "
+        f"(median mismatch {weather['temperature_match_error_median']}°F, correlation {weather['temperature_match_correlation']}). "
+        "Morning departures cluster at 8–9 am, evening departures at 3–4 pm.",
+        f"Searching every compass bearing, the ride to work heads about {weather['work_bearing_deg']:.0f}° (west-north-west; "
+        f"90% CI {weather['work_bearing_ci'][0]}–{weather['work_bearing_ci'][1]}°), so the ride home heads east-south-east.",
+        f"Each mph of headwind adds {weather['headwind_seconds_per_mph']} s (90% CI {weather['headwind_seconds_ci'][0]}–{weather['headwind_seconds_ci'][1]} s, "
+        f"p={weather['headwind_p_value']:.1e}). Adding wind lifts R² from {weather['r_squared_without_wind']} to {weather['r_squared_with_wind']} "
+        f"and cuts the typical error from {weather['residual_sd_without_wind_s']} s to {weather['residual_sd_with_wind_s']} s.",
+        f"Evening winds are stronger ({home['mean_wind_mph']} mph vs {work['mean_wind_mph']} mph) and come from about {home['wind_from_deg']:.0f}°, "
+        f"giving the ride home an average tailwind of {abs(home['mean_headwind_mph'])} mph. Wind therefore does not explain why home is slower: "
+        f"with wind controlled the home penalty grows from {weather['home_penalty_without_wind']} to {weather['home_penalty_with_wind']} min, "
+        "which points to terrain (a net climb toward home) or evening traffic.",
+        f"Rain: +{rain['estimate']} min per inch per hour (p={rain['p_value']:.3f}) but only {weather['rainy_trips']} rides had measurable rain. "
+        "Gusts, crosswind, humidity and cloud cover show no reliable effect.",
+    ]
+
+
 def write_context(df: pd.DataFrame, results: dict) -> None:
     context = build_context(df, results)
     ASSISTANT_CONTEXT_FILE.parent.mkdir(parents=True, exist_ok=True)
     ASSISTANT_CONTEXT_FILE.write_text("export const DATASET_CONTEXT = " + json.dumps(context, ensure_ascii=False) + ";\n")
-
-
-def _apply_style() -> None:
-    plt.rcParams.update(
-        {
-            "figure.facecolor": BRAND["navy"],
-            "axes.facecolor": BRAND["navy"],
-            "savefig.facecolor": BRAND["navy"],
-            "axes.edgecolor": BRAND["grid"],
-            "axes.labelcolor": BRAND["muted"],
-            "axes.titlecolor": BRAND["ink"],
-            "axes.titleweight": "bold",
-            "axes.titlesize": 13,
-            "axes.titlelocation": "left",
-            "axes.labelsize": 10,
-            "axes.grid": True,
-            "axes.spines.top": False,
-            "axes.spines.right": False,
-            "grid.color": BRAND["grid"],
-            "grid.linewidth": 0.6,
-            "xtick.color": BRAND["muted"],
-            "ytick.color": BRAND["muted"],
-            "text.color": BRAND["ink"],
-            "legend.frameon": False,
-            "legend.labelcolor": BRAND["ink"],
-            "font.family": "DejaVu Sans",
-            "font.size": 10,
-        }
-    )
-
-
-def _save(fig, name: str) -> None:
-    FIGURES_DIR.mkdir(parents=True, exist_ok=True)
-    fig.savefig(FIGURES_DIR / name, dpi=180, bbox_inches="tight")
-    plt.close(fig)
-
-
-def timeline(df: pd.DataFrame) -> None:
-    fig, ax = plt.subplots(figsize=(11, 4.2))
-    for destination, color in DESTINATION_COLORS.items():
-        subset = df[df["destination"] == destination]
-        ax.scatter(subset["date"], subset["minutes"], s=34, color=color, edgecolor=BRAND["navy"], linewidth=1.2, label=f"To {destination.lower()}", zorder=3)
-    ax.axvspan(pd.Timestamp("2019-11-15"), pd.Timestamp("2021-04-01"), color=BRAND["navy_soft"], zorder=0)
-    ax.text(pd.Timestamp("2020-07-20"), 43.3, "No rides logged\n2020", ha="center", va="top", color=BRAND["muted"], fontsize=9)
-    ax.xaxis.set_major_locator(mdates.YearLocator())
-    ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
-    ax.set_ylabel("Trip time (minutes)")
-    ax.set_title("Seven seasons of commuting: every trip, 2019–2026")
-    ax.legend(loc="upper right", ncol=2)
-    _save(fig, "01_timeline.png")
-
-
-def direction_gap(results: dict) -> None:
-    pairs = pd.DataFrame(results["overview"]["pairs"])
-    pairs = pairs[(pairs["route_work"] == "A") & (pairs["route_home"] == "A")]
-    fig, (left, right) = plt.subplots(1, 2, figsize=(11, 4.4), gridspec_kw={"width_ratios": [1, 1.3]})
-    for _, row in pairs.iterrows():
-        left.plot([0, 1], [row["minutes_work"], row["minutes_home"]], color=BRAND["muted"], alpha=0.35, linewidth=1)
-    left.scatter(np.zeros(len(pairs)), pairs["minutes_work"], color=DESTINATION_COLORS["Work"], s=26, zorder=3)
-    left.scatter(np.ones(len(pairs)), pairs["minutes_home"], color=DESTINATION_COLORS["Home"], s=26, zorder=3)
-    left.set_xticks([0, 1], ["Morning\nto work", "Evening\nto home"])
-    left.set_xlim(-0.35, 1.35)
-    left.set_ylabel("Minutes")
-    left.set_title("Morning vs. evening, same day")
-    gap = results["inference"]["direction_gap"]
-    right.hist(pairs["gap_minutes"], bins=np.arange(2, 10.5, 0.5), rwidth=0.9, color=BRAND["orange"], edgecolor="none")
-    right.axvline(gap["median_gap"], color=BRAND["ink"], linewidth=1.5)
-    right.text(gap["median_gap"] - 0.15, right.get_ylim()[1] * 0.97, f"median +{gap['median_gap']:.1f} min\n95% CI {gap['median_gap_ci'][0]:.1f}–{gap['median_gap_ci'][1]:.1f}", color=BRAND["ink"], fontsize=9, va="top", ha="right")
-    right.set_xlabel("Home minus work (minutes)")
-    right.set_ylabel("Days")
-    right.set_title("Distribution of the daily gap")
-    fig.suptitle(f"Home is slower on {gap['n_pairs']} of {gap['n_pairs']} paired days on Route A", x=0.01, ha="left", fontsize=13, fontweight="bold", color=BRAND["ink"])
-    _save(fig, "02_direction_gap.png")
-
-
-def temperature_effect(df: pd.DataFrame, results: dict) -> None:
-    bands = results["interpretation"]["gam_temperature"]
-    lowess = results["overview"]["lowess_temperature"]
-    fig, axes = plt.subplots(1, 2, figsize=(11, 4.4))
-    primary = df[df["is_primary_route"]]
-    for ax, destination in zip(axes, ["Work", "Home"]):
-        color = DESTINATION_COLORS[destination]
-        band = bands[destination]
-        subset = primary[primary["destination"] == destination]
-        ax.scatter(subset["temperature_f"], subset["minutes"], s=22, color=color, alpha=0.4, edgecolor="none")
-        ax.plot(lowess[destination]["x"], lowess[destination]["y"], color=BRAND["ink"], linewidth=1.6, label="Raw trend (LOWESS)")
-        ax.fill_between(band["temperature"], band["low"], band["high"], color=color, alpha=0.22, linewidth=0)
-        ax.plot(band["temperature"], band["fit"], color=color, linewidth=2.4, label="Adjusted GAM + 90% band")
-        ax.set_xlabel("Temperature at departure (°F)")
-        ax.set_title(f"To {destination.lower()}")
-        ax.legend(loc="upper right", fontsize=8.5)
-    axes[0].set_ylabel("Minutes")
-    fig.suptitle("Raw vs. adjusted temperature effect: the cold penalty shrinks once fitness is held fixed", x=0.01, ha="left", fontsize=13, fontweight="bold", color=BRAND["ink"])
-    _save(fig, "03_temperature_effect.png")
-
-
-def season_learning(results: dict) -> None:
-    learning = results["interpretation"]["season_learning"]
-    points = pd.DataFrame(learning["points"])
-    buckets = pd.DataFrame(learning["buckets"])
-    curve = results["interpretation"]["curves"]["season_ride_number"]["ensemble"]
-    fig, ax = plt.subplots(figsize=(11, 4.2))
-    for destination, color in DESTINATION_COLORS.items():
-        subset = points[points["destination"] == destination]
-        ax.scatter(subset["season_ride_number"], subset["adjusted"], s=20, color=color, alpha=0.5, edgecolor="none", label=f"To {destination.lower()} (adjusted)")
-    centred = np.array(curve["pdp"]) - np.mean(curve["pdp"])
-    ax.plot(curve["grid"], centred, color=BRAND["ink"], linewidth=2.4, label="Ensemble partial dependence")
-    ax.scatter(buckets["ride"], buckets["adjusted"], s=70, color=BRAND["ink"], edgecolor=BRAND["navy"], linewidth=2, zorder=4, label="Bucket means")
-    ax.axhline(0, color=BRAND["muted"], linewidth=0.8)
-    ax.set_xlabel("Ride number within the season")
-    ax.set_ylabel("Minutes vs. typical (direction & temperature removed)")
-    ax.set_title("Riding legs: each season starts slow and gets faster with every ride")
-    ax.legend(loc="upper right", fontsize=8.5)
-    _save(fig, "04_season_learning.png")
-
-
-def frequency_and_trend(results: dict) -> None:
-    frequency = pd.DataFrame(results["overview"]["frequency"])
-    effects = pd.DataFrame(results["inference"]["trend"]["season_effects"])
-    fig, (top, bottom) = plt.subplots(2, 1, figsize=(11, 6.4), sharex=True, gridspec_kw={"height_ratios": [1, 1]})
-    top.bar(frequency["season"], frequency["trips"], color=BRAND["orange"], width=0.6, edgecolor=BRAND["navy"])
-    for _, row in frequency.iterrows():
-        top.text(row["season"], row["trips"] + 1, str(int(row["trips"])), ha="center", fontsize=9)
-    top.set_ylabel("Trips logged")
-    top.set_title("Fewer rides each year…")
-    fitness = pd.DataFrame(results["inference"]["trend"]["season_effects_fitness_adjusted"])
-    for frame, offset, color, label in (
-        (effects, -0.12, BRAND["sky"], "Direction + temperature adjusted"),
-        (fitness, 0.12, BRAND["orange"], "+ ride number & layoff adjusted"),
-    ):
-        bottom.errorbar(
-            frame["season"] + offset,
-            frame["estimate"] * 60,
-            yerr=[(frame["estimate"] - frame["ci_low"]) * 60, (frame["ci_high"] - frame["estimate"]) * 60],
-            fmt="o",
-            color=color,
-            ecolor=color,
-            elinewidth=1.4,
-            markersize=7,
-            label=label,
-        )
-    bottom.legend(loc="upper left", fontsize=8.5)
-    bottom.set_ylim(-150, 150)
-    bottom.axhline(0, color=BRAND["muted"], linewidth=0.8)
-    bottom.set_ylabel("Seconds vs. 2019\n(direction & temperature adjusted)")
-    bottom.set_title("…and a small slowdown that disappears once in-season ride count is controlled")
-    bottom.set_xticks(frequency["season"])
-    _save(fig, "05_frequency_and_trend.png")
-
-
-def routes(df: pd.DataFrame) -> None:
-    work = df[df["destination"] == "Work"]
-    order = work.groupby("route")["mph"].mean().sort_values().index
-    fig, ax = plt.subplots(figsize=(11, 3.6))
-    rng = np.random.default_rng(1)
-    for position, route in enumerate(order):
-        values = work.loc[work["route"] == route, "mph"]
-        color = BRAND["orange"] if route == "D" else BRAND["sky"]
-        ax.scatter(values, position + rng.uniform(-0.12, 0.12, len(values)), s=24, color=color, alpha=0.6, edgecolor="none")
-        ax.scatter(values.mean(), position, s=140, marker="|", color=BRAND["ink"], linewidth=2.5)
-        distance = df.loc[df["route"] == route, "distance_miles"].iloc[0]
-        ax.text(15.15, position, f"n={len(values)} · {distance} mi", va="center", fontsize=9, color=BRAND["muted"])
-    ax.set_yticks(range(len(order)), [f"Route {route}" for route in order])
-    ax.set_xlim(12.2, 16.2)
-    ax.set_xlabel("Average speed to work (mph)")
-    ax.set_title("Route D looks faster, but it was ridden at peak fitness and is 0.1 mi shorter")
-    _save(fig, "06_routes.png")
-
-
-def model_comparison(results: dict) -> None:
-    cv = pd.DataFrame(results["modelling"]["cv"]).sort_values("rmse_mean", ascending=False)
-    fig, ax = plt.subplots(figsize=(11, 3.9))
-    colors = [BRAND["orange"] if name == results["modelling"]["best_model"] else BRAND["sky"] for name in cv["model"]]
-    ax.barh(cv["model"], cv["rmse_mean"] * 60, xerr=cv["rmse_std"] * 60, color=colors, height=0.55, error_kw={"ecolor": BRAND["muted"], "elinewidth": 1})
-    for position, (value, r2) in enumerate(zip(cv["rmse_mean"] * 60, cv["r2_mean"])):
-        ax.text(value + 14, position, f"{value:.0f}s · R² {r2:.2f}", va="center", fontsize=9)
-    ax.set_xlabel("Cross-validated RMSE (seconds) — grouped by ride day, 5×5 folds")
-    ax.set_title("Seven learners, one verdict: the signal is smooth and mostly additive")
-    ax.grid(axis="y", visible=False)
-    _save(fig, "07_model_comparison.png")
-
-
-def shap_beeswarm(results: dict) -> None:
-    shap_block = results["interpretation"]["shap"]
-    trips = results["trips"]
-    features = shap_block["features"]
-    order = [item["feature"] for item in shap_block["importance"]][::-1]
-    values = np.array([trip["shap"] for trip in trips])
-    feature_values = np.array(shap_block["feature_values"])
-    labels = {item["feature"]: item["label"] for item in shap_block["importance"]}
-    fig, ax = plt.subplots(figsize=(11, 4.8))
-    cmap = matplotlib.colors.LinearSegmentedColormap.from_list("brand", [BRAND["sky"], "#c9d6d9", BRAND["orange"]])
-    rng = np.random.default_rng(3)
-    for position, feature in enumerate(order):
-        index = features.index(feature)
-        raw = feature_values[:, index]
-        scaled = (raw - raw.min()) / (np.ptp(raw) or 1)
-        ax.scatter(values[:, index] * 60, position + rng.uniform(-0.25, 0.25, len(raw)), c=scaled, cmap=cmap, s=14, alpha=0.85, edgecolor="none")
-    ax.set_yticks(range(len(order)), [labels[feature] for feature in order])
-    ax.axvline(0, color=BRAND["muted"], linewidth=0.8)
-    ax.set_xlabel("SHAP contribution to trip time (seconds) · colour = feature value (low → high)")
-    ax.set_title("What moves the clock: LightGBM SHAP values for every trip")
-    _save(fig, "08_shap_beeswarm.png")
-
-
-def cold_penalty(results: dict) -> None:
-    block = results["inference"]["cold_penalty"]
-    steps = pd.DataFrame(block["steps"])[::-1].reset_index(drop=True)
-    fig, ax = plt.subplots(figsize=(11, 3.4))
-    colors = [BRAND["orange"] if index == len(steps) - 1 else BRAND["sky"] for index in range(len(steps))]
-    ax.barh(steps["model"], steps["penalty_minutes"] * 60, color=colors, height=0.5)
-    ax.errorbar(steps["penalty_minutes"] * 60, range(len(steps)), xerr=[(steps["penalty_minutes"] - steps["ci_low"]) * 60, (steps["ci_high"] - steps["penalty_minutes"]) * 60], fmt="none", ecolor=BRAND["ink"], elinewidth=1.2)
-    for position, value in enumerate(steps["penalty_minutes"] * 60):
-        ax.text(4, position + 0.33, f"{value:.0f}s", fontsize=9, color=BRAND["ink"])
-    ax.set_xlabel(f"Extra seconds on a {block['cold_f']}°F vs. {block['mild_f']}°F morning (90% bootstrap interval)")
-    ax.set_title(f"About {block['share_explained_by_fitness']:.0%} of the cold-morning penalty is really early-season fitness")
-    ax.grid(axis="y", visible=False)
-    _save(fig, "09_cold_penalty.png")
-
-
-def render_all(df: pd.DataFrame, results: dict) -> None:
-    _apply_style()
-    timeline(df)
-    direction_gap(results)
-    temperature_effect(df, results)
-    season_learning(results)
-    frequency_and_trend(results)
-    routes(df)
-    model_comparison(results)
-    shap_beeswarm(results)
-    cold_penalty(results)
 
 
 PLANNER_CANDIDATES = ["Linear regression", "GAM (penalised splines)", "Gaussian process (ARD)", "Ensemble (GAM + GP + GBM)"]
@@ -1321,6 +1269,11 @@ def run(cv_repeats: int = 5, bootstrap_reps: int = 300, conformal_reps: int = 60
     print("statistical inference")
     stats_results = run_inference(df)
 
+    print("weather and wind")
+    weather_trips = attach_weather(df, load_weather(df))
+    weather_trips.to_csv(WEATHER_TRIPS_FILE, index=False)
+    weather_results = wind_analysis(weather_trips)
+
     print("cross-validating model zoo")
     cv_summary, oof = cross_validate(df, repeats=cv_repeats)
     forward = forward_validation(df)
@@ -1398,6 +1351,7 @@ def run(cv_repeats: int = 5, bootstrap_reps: int = 300, conformal_reps: int = 60
             "generated": pd.Timestamp.now().strftime("%Y-%m-%d"),
             "overview": overview,
             "inference": stats_results,
+            "weather": weather_results,
             "modelling": modelling,
             "interpretation": interpretation,
             "planner": planner,
@@ -1405,15 +1359,11 @@ def run(cv_repeats: int = 5, bootstrap_reps: int = 300, conformal_reps: int = 60
         }
     )
 
-    RESULTS_JSON.parent.mkdir(parents=True, exist_ok=True)
-    RESULTS_JSON.write_text(json.dumps({k: v for k, v in results.items() if k not in ("trips", "planner")}, indent=2))
     SITE_DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
     SITE_DATA_FILE.write_text("window.COMMUTE = " + json.dumps(results, separators=(",", ":")) + ";\n")
 
     write_context(df, results)
 
-    print("rendering figures")
-    render_all(df, results)
     print(f"done in {time.time() - started:.0f}s")
     return results
 

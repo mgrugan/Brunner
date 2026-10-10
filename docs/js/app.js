@@ -136,6 +136,31 @@ function fillTemperature() {
   );
 }
 
+function fillWeather() {
+  const w = D.weather;
+  if (!w) return;
+  const home = w.by_direction.Home;
+  const work = w.by_direction.Work;
+  const rain = w.other_weather.precipitation;
+  d3.select("#weather-lede").html(
+    `The original log had no wind or rain, so hourly weather for central Pittsburgh was pulled from the Open-Meteo historical archive for every ride day. Each ride's departure hour was found by matching its recorded temperature to the hourly readings (median mismatch ${w.temperature_match_error_median}°F). ` +
+      `Testing every compass bearing, the times fit best if the ride to work heads <strong>${Math.round(w.work_bearing_deg)}°, west-north-west</strong> (90% CI ${w.work_bearing_ci[0]}–${w.work_bearing_ci[1]}°). ` +
+      `On that line, each mph of headwind costs <strong>${w.headwind_seconds_per_mph.toFixed(1)} seconds</strong>.`
+  );
+  const tiles = [
+    [`${w.headwind_seconds_per_mph.toFixed(1)}s`, `per mph of headwind (90% CI ${w.headwind_seconds_ci[0]}–${w.headwind_seconds_ci[1]}s)`],
+    [`${w.r_squared_without_wind.toFixed(3)} → ${w.r_squared_with_wind.toFixed(3)}`, `R² with wind added; typical error ${Math.round(w.residual_sd_without_wind_s)}s → ${Math.round(w.residual_sd_with_wind_s)}s`],
+    [`${home.mean_wind_mph} vs ${work.mean_wind_mph} mph`, "average wind on the ride home vs. to work"],
+    [`+${Math.round(rain.estimate * 6)}s`, `per 0.1 in of rain in the hour (only ${w.rainy_trips} wet rides)`],
+  ];
+  d3.select("#weather-tiles").selectAll("div").data(tiles).join("div").attr("class", "stat")
+    .html(([v, l]) => `<div class="stat-value">${v}</div><div class="stat-label">${l}</div>`);
+  d3.select("#weather-callout").html(
+    `<strong>Wind rules itself out as the cause of the slow ride home.</strong> Evening winds are stronger, but they blow from about ${Math.round(home.wind_from_deg)}°, which on this route is a <em>tailwind</em> home (${Math.abs(home.mean_headwind_mph)} mph on average). ` +
+      `Controlling for wind makes the home penalty slightly larger, ${w.home_penalty_without_wind.toFixed(2)} → ${w.home_penalty_with_wind.toFixed(2)} minutes. What remains points to the road itself: most likely a net climb toward home, or evening traffic and lights.`
+  );
+}
+
 function fillFitness() {
   const ride = coefficient("season_ride_number");
   const layoff = coefficient("log_days_since_last_ride");
@@ -367,6 +392,10 @@ function renderCharts() {
   Charts.gapHistogram("#gap-hist", primaryPairs(), D.inference.direction_gap);
   renderTemperature();
   Charts.coldPenalty("#cold-penalty", D.inference.cold_penalty);
+  if (D.weather) {
+    Charts.windCompass("#wind-compass", D.weather);
+    Charts.windScatter("#wind-scatter", D.weather);
+  }
   Charts.learning("#learning", D.interpretation.season_learning, D.interpretation.curves.season_ride_number.ensemble);
   Charts.surface("#surface", D.interpretation.surface, state.surface);
   Charts.frequency("#frequency", D.overview.frequency);
@@ -471,6 +500,7 @@ function init() {
   fillFindings();
   fillDirection();
   fillTemperature();
+  fillWeather();
   fillFitness();
   fillYears();
   fillRoutes();
