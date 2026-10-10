@@ -56,25 +56,25 @@ function fillFindings() {
   const cards = [
     [
       `+${Format.clock(gap.median_gap)}`,
-      "Home is slower, always",
-      `The evening ride home was slower on ${gap.n_pairs} of ${gap.n_pairs} paired days. Direction alone explains about 80% of the variance in trip time.`,
+      "Home is always slower",
+      `The ride home was slower on ${gap.n_pairs} of ${gap.n_pairs} paired days. Direction alone explains about 80% of the variance in trip time.`,
       "#direction",
     ],
     [
       `−${Format.clock(fitnessGain)}`,
-      "Fitness builds every season",
-      `From the first ride of a season to peak form, the same trip gets about ${seconds(fitnessGain)} seconds faster, levelling off after roughly 15 rides.`,
+      "Fitness rebuilds each season",
+      `From a season's first ride to peak form, the same trip gets about ${seconds(fitnessGain)} seconds faster, levelling off after roughly 15 rides.`,
       "#fitness",
     ],
     [
       `${Math.round(cold.share_explained_by_fitness * 100)}%`,
-      "Cold is partly a red herring",
-      `Of the raw ${seconds(cold.steps[0].penalty_minutes)}s cold-morning penalty, this share disappears once early-season fitness and the calendar are controlled.`,
+      "Cold gets too much blame",
+      `The raw cold-morning penalty is ${seconds(cold.steps[0].penalty_minutes)}s. This share of it disappears once early-season fitness and the calendar are controlled.`,
       "#temperature",
     ],
     [
-      `${seconds(likeForLike)}s`,
-      "Not slowing down, riding less",
+      Format.signedSeconds(likeForLike),
+      "Riding less, not slower",
       `Trips fell from 56 a year to single digits. Like-for-like, the 2022–24 seasons were about ${Math.abs(seconds(likeForLike))} seconds faster than 2019.`,
       "#years",
     ],
@@ -115,10 +115,10 @@ function fillDirection() {
     .attr("class", "stat")
     .html(([v, l]) => `<div class="stat-value">${v}</div><div class="stat-label">${l}</div>`);
   d3.select("#direction-callout").html(
-    `<strong>Why is home slower?</strong> The data has no elevation, wind or traffic, so the gap can't be attributed with certainty. What it does rule out matters. ` +
-      `The gap is not temperature: evenings are ${paired.mean_temp_rise}°F warmer on average, and warmth doesn't slow these rides. ` +
-      `It is not a "bad day" effect either: a day-level random intercept absorbs essentially no variance (ICC ≈ ${D.inference.mixed_model.icc.toFixed(2)}), and a slow morning does not predict a slow evening (r = ${residuals.r.toFixed(2)}, ${Format.p(residuals.p_value)}). ` +
-      `A gap this consistent, ${Format.clock(gap.min_gap)} even on the best day, points to something built into the route: <strong>a net climb toward home, prevailing afternoon headwinds, or heavier evening traffic</strong>.`
+    `<strong>Why home is slower.</strong> The data has no elevation, wind or traffic, so the gap can't be pinned on a single cause. It does rule some out. ` +
+      `Not temperature: evenings are ${paired.mean_temp_rise}°F warmer on average, and warmth doesn't slow these rides. ` +
+      `Not a "bad day" effect either: a day-level random intercept absorbs essentially no variance (ICC ≈ ${D.inference.mixed_model.icc.toFixed(2)}), and a slow morning does not predict a slow evening (r = ${residuals.r.toFixed(2)}, ${Format.p(residuals.p_value)}). ` +
+      `A gap this steady, ${Format.clock(gap.min_gap)} even on the best day, points to something built into the route: <strong>a net climb toward home, prevailing afternoon headwinds, or heavier evening traffic</strong>.`
   );
 }
 
@@ -127,12 +127,12 @@ function fillTemperature() {
   const steps = cold.steps;
   const gp = D.interpretation.gp_relevance.find((d) => d.feature === "temperature_f");
   d3.select("#temperature-lede").html(
-    `On raw numbers a ${cold.cold_f}°F morning costs about <strong>${seconds(steps[0].penalty_minutes)} seconds</strong> more than a ${cold.mild_f}°F one. But cold mornings are not random: they cluster at the start of each season (Spearman ρ = ${cold.spearman_temp_ride} with ride number, ${cold.spearman_temp_doy} with day of year), exactly when the legs are least trained. ` +
+    `On raw numbers a ${cold.cold_f}°F morning costs about <strong>${seconds(steps[0].penalty_minutes)} seconds</strong> more than a ${cold.mild_f}°F one. But cold mornings are not random. They cluster at the start of each season (Spearman ρ = ${cold.spearman_temp_ride} with ride number, ${cold.spearman_temp_doy} with day of year), when the legs are least trained. ` +
       `Separate the two and the cold penalty falls to <strong>${seconds(steps[steps.length - 1].penalty_minutes)} seconds</strong>, with a 90% interval that reaches zero. On the ride home, temperature shows no detectable effect between 55°F and 90°F, so heat costs nothing.`
   );
   d3.select("#cold-sub").text(`Work trips on Route A, ${cold.cold_f}°F vs. ${cold.mild_f}°F, as controls are added. Bars show 90% bootstrap intervals.`);
   d3.select("#cold-note").html(
-    `The Gaussian process, given all features at once, drives temperature's length-scale to its upper bound (${gp.length_scale}) and credits the seasonal signal to ride number instead. With collinear drivers like these, choosing a single "cause" is a modelling choice, so the honest estimate is a range: <strong class="text-brand-ink">${seconds(steps[steps.length - 1].penalty_minutes)}–${seconds(steps[0].penalty_minutes)}s</strong>.`
+    `Given every feature at once, the Gaussian process pushes temperature's length-scale to its upper bound (${gp.length_scale}) and credits the seasonal signal to ride number instead. With drivers this tangled, naming a single cause is a modelling choice, so the fair estimate is a range: <strong class="text-brand-ink">${seconds(steps[steps.length - 1].penalty_minutes)}–${seconds(steps[0].penalty_minutes)}s</strong>.`
   );
 }
 
@@ -144,9 +144,9 @@ function fillFitness() {
   const gain = buckets[0].adjusted - d3.min(buckets, (b) => b.adjusted);
   const modelGain = curve.pdp[0] - d3.min(curve.pdp);
   d3.select("#fitness-lede").html(
-    `Ride number within a season is the second-strongest driver of trip time. Each additional ride shaves about <strong>${Math.abs(seconds(ride.estimate))} seconds</strong> off the next one (95% CI ${Math.abs(seconds(ride.ci_high))}–${Math.abs(seconds(ride.ci_low))}s, ${Format.p(ride.p_value)}). ` +
-      `Non-parametric models show this is not a straight line but a learning curve: steep for the first dozen rides, flat after about 15. Bucket averages put the total at <strong>${seconds(gain)} seconds</strong>; the ensemble's partial dependence, which also separates out the calendar, puts it as high as ${Format.clock(modelGain)}. ` +
-      `Time off between rides adds a little more rust on top (+${seconds(layoff.estimate)}s per log-day, ${Format.p(layoff.p_value)}).`
+    `Ride number within a season is the second-strongest driver of trip time. Each extra ride shaves about <strong>${Math.abs(seconds(ride.estimate))} seconds</strong> off the next (95% CI ${Math.abs(seconds(ride.ci_high))}–${Math.abs(seconds(ride.ci_low))}s, ${Format.p(ride.p_value)}). ` +
+      `Flexible models show the effect is a learning curve rather than a straight line, steep for the first dozen rides and flat after about 15. Bucket averages put the total at <strong>${seconds(gain)} seconds</strong>; the ensemble's partial dependence, which also separates out the calendar, puts it as high as ${Format.clock(modelGain)}. ` +
+      `Time off between rides adds a little rust on top (+${seconds(layoff.estimate)}s per log-day, ${Format.p(layoff.p_value)}).`
   );
 }
 
@@ -158,7 +158,7 @@ function fillYears() {
   d3.select("#years-lede").html(
     `The raw data suggests a slowly ageing rider: holding direction and temperature fixed, trips get <strong>${trend.naive_years_coef_seconds}s slower per year</strong> (${Format.p(trend.naive_years_p)}), and 2026 is the slowest season yet. ` +
       `But the bike came out ${first.trips} times in 2019 and far less since, so later seasons rarely got past the slow early part of the fitness curve. ` +
-      `Control for ride number and layoff and the sign flips to <strong>${trend.adjusted_years_coef_seconds}s per year</strong>. The 2022–24 seasons were ${Math.abs(seconds(d3.mean(adjusted, (d) => d.estimate)))}s <em>faster</em> than 2019 on a like-for-like basis. The rider hasn't slowed down. The riding habit has.`
+      `Control for ride number and layoff and the sign flips to <strong>${trend.adjusted_years_coef_seconds}s per year</strong>. Like for like, the 2022–24 seasons were ${Math.abs(seconds(d3.mean(adjusted, (d) => d.estimate)))}s <em>faster</em> than 2019. The rider hasn't slowed down. The riding habit has.`
   );
   const tiles = [
     [`${trend.naive_years_coef_seconds > 0 ? "+" : ""}${trend.naive_years_coef_seconds}s/yr`, "Naive trend (direction & temperature only)"],
@@ -180,7 +180,7 @@ function fillRoutes() {
   const distanceSaving = (0.1 / 13.4) * 60;
   d3.select("#routes-lede").html(
     `Route A carries ${Math.round(D.overview.headline.share_primary_route * 100)}% of all trips. On the way to work, Route D averaged <strong>${Format.clock(routes.work_route_d_mean)}</strong> against Route A's ${Format.clock(routes.work_route_a_mean)}, which on its own looks significant (Mann–Whitney ${Format.p(routes.mann_whitney_p)}). ` +
-      `However, D was ridden only in late summer and autumn, at peak season fitness. In the same autumn-2019 window, A averaged ${Format.clock(routes.autumn_2019_route_a_mean)} vs. D's ${Format.clock(routes.autumn_2019_route_d_mean)} (${Format.p(routes.autumn_2019_mann_whitney_p)}). ` +
+      `But D was ridden only in late summer and autumn, at peak season fitness. In the same autumn-2019 window, A averaged ${Format.clock(routes.autumn_2019_route_a_mean)} vs. D's ${Format.clock(routes.autumn_2019_route_d_mean)} (${Format.p(routes.autumn_2019_mann_whitney_p)}). ` +
       `The adjusted D effect is <strong>${Format.signedSeconds(d.estimate)}</strong>, almost exactly the ${Math.round(distanceSaving * 60)}s you would expect from riding 0.1 mile less. Route B, a mile longer, costs about ${Format.clock(b.estimate)} extra, in line with its distance.`
   );
   const compare = [
@@ -207,8 +207,8 @@ function fillModels() {
   const linear = cv.find((r) => r.model === "Linear regression");
   const baseline = cv.find((r) => r.model.includes("baseline"));
   d3.select("#models-lede").html(
-    `Seven models, from a direction-only baseline to an ARD Gaussian process, were compared under repeated cross-validation grouped by ride day. An averaging ensemble of GAM, Gaussian process and LightGBM wins at <strong>${seconds(best.rmse_mean)}s RMSE</strong> (R² ${best.r2_mean.toFixed(2)}), against ${seconds(baseline.rmse_mean)}s for the baseline. ` +
-      `A plain linear model comes within ${seconds(linear.rmse_mean - best.rmse_mean)}s of the winner. That is a finding in its own right: the flexible learners found <strong>no hidden interactions or thresholds</strong>, only smooth, mostly additive effects plus about a minute of irreducible day-to-day noise. Forward-in-time tests add a caution: splines on "years elapsed" extrapolate badly when only one or two seasons are available (the GAM's 2022–23 errors).`
+    `Seven models, from a direction-only baseline to an ARD Gaussian process, were scored with repeated cross-validation grouped by ride day. An averaging ensemble of GAM (smooth spline curves), Gaussian process and LightGBM (boosted decision trees) wins at <strong>${seconds(best.rmse_mean)}s RMSE</strong> (R² ${best.r2_mean.toFixed(2)}), against ${seconds(baseline.rmse_mean)}s for the baseline. ` +
+      `A plain linear model lands within ${seconds(linear.rmse_mean - best.rmse_mean)}s of the winner, which is a result in itself: the flexible learners found <strong>no hidden interactions or thresholds</strong>, only smooth, mostly additive effects plus about a minute of irreducible day-to-day noise. Forward-in-time tests add one caution: splines on "years elapsed" extrapolate badly when only one or two seasons are available (the GAM's 2022–23 errors).`
   );
   Charts.leaderboard("#leaderboard", cv, D.modelling.best_model);
   renderForwardTable();
@@ -221,7 +221,7 @@ function renderForwardTable() {
   const seasons = [...new Set(rows.map((r) => r.season))].sort();
   const models = D.modelling.cv.map((r) => r.model);
   const lookup = new Map(rows.map((r) => [`${r.model}|${r.season}`, r]));
-  const color = d3.scaleSequential().domain([30, 110]).interpolator(d3.interpolateRgb("#0b3a47", Palette.orange)).clamp(true);
+  const color = d3.scaleSequential().domain([30, 110]).interpolator(d3.interpolateRgb(Palette.brandNavy, Palette.orange)).clamp(true);
   const header = `<tr><th>Model</th>${seasons.map((s) => `<th class="num">${s}<div class="font-normal normal-case tracking-normal">n=${lookup.get(`${models[0]}|${s}`).n}</div></th>`).join("")}</tr>`;
   const body = models
     .map((model) => {
@@ -256,7 +256,7 @@ function renderImportance() {
     .join("");
   d3.select("#importance").html(
     `<div class="overflow-x-auto"><table class="data-table"><tr><th>Feature</th><th class="num">SHAP</th><th class="num">Perm.</th><th class="num">GP</th></tr>${rows}</table></div>` +
-      `<p class="mt-4 text-xs leading-relaxed text-brand-muted">The three lenses agree on direction and in-season fitness. They split credit differently among temperature, day of year and ride number, because those three move together through every season.</p>`
+      `<p class="mt-4 text-xs leading-relaxed text-brand-muted">The three lenses agree on direction and in-season fitness. They split the credit differently among temperature, day of year and ride number, because those three move together through every season.</p>`
   );
 }
 
@@ -272,15 +272,15 @@ function renderAnomalies() {
     .join("");
   d3.select("#anomalies").html(
     `<table class="data-table"><tr><th>Date</th><th>To</th><th class="num">Route</th><th class="num">Temp</th><th class="num">Actual</th><th class="num">Expected</th><th class="num">Surprise</th></tr>${rows}</table>` +
-      `<p class="mt-4 text-xs leading-relaxed text-brand-muted">The biggest "surprise" is the only Route B ride home, and it is a lesson about model limits: tree models can't learn a distance effect from two trips, yet 0.9 extra miles at evening pace (~4.7 min) explains almost all of it. The fastest outlier, 31 Aug 2022, beat expectations by over 3 minutes, plausibly with help from a tailwind.</p>`
+      `<p class="mt-4 text-xs leading-relaxed text-brand-muted">The biggest "surprise" is the only Route B ride home, and it shows the limits of the models: tree models can't learn a distance effect from two trips, yet 0.9 extra miles at evening pace (~4.7 min) explains almost all of it. The fastest outlier, 31 Aug 2022, beat expectations by over 3 minutes, plausibly with help from a tailwind.</p>`
   );
 }
 
 function fillPlanner() {
   const conformal = D.modelling.conformal;
   d3.select("#planner-lede").html(
-    `The best model, an ensemble of GAM, Gaussian process and LightGBM, is wrapped in <strong>conformal prediction</strong>, which turns out-of-fold errors into a distribution-free 90% interval of ±${Format.clock(D.planner.half_width)}. ` +
-      `Over ${60} random day-level train/calibrate/test splits, split-conformal intervals achieved <strong>${Math.round(conformal.empirical_coverage * 100)}% coverage</strong> against the 90% target. Set the conditions below to get a leave-by time.`
+    `The best model, an ensemble of GAM, Gaussian process and LightGBM, is wrapped in <strong>conformal prediction</strong>, a method that turns out-of-fold errors into a distribution-free 90% interval of ±${Format.clock(D.planner.half_width)}. ` +
+      `Across ${60} random day-level train/calibrate/test splits, split-conformal intervals achieved <strong>${Math.round(conformal.empirical_coverage * 100)}% coverage</strong> against the 90% target. Set the conditions below to get a leave-by time.`
   );
   const temp = document.getElementById("pl-temp");
   const month = document.getElementById("pl-month");
@@ -318,7 +318,7 @@ function updatePlanner() {
   leave.setSeconds(leave.getSeconds() - Math.ceil(upper * 60));
   document.getElementById("pl-leave").textContent = d3.timeFormat("%-I:%M")(leave);
   document.getElementById("pl-note").textContent =
-    `Route A, ${state.plannerDirection ? "to home" : "to work"}, typical layoff, current-year fitness. Predictions outside the observed temperature range (26–90°F) extrapolate.`;
+    `Route A, ${state.plannerDirection ? "to home" : "to work"}, typical layoff, current-year fitness. Predictions outside the observed temperature range (26–90°F) are extrapolations.`;
   Charts.plannerBar("#pl-bar", prediction, p.half_width, state.plannerDirection ? "Home" : "Work");
 }
 
@@ -326,12 +326,12 @@ function fillImplications() {
   const gap = D.inference.direction_gap;
   const cold = D.inference.cold_penalty;
   const items = [
-    ["Budget the trip home separately", `Plan on about 33 minutes in and 39 out. Using the morning time for the evening leaves a commuter ${Format.clock(gap.median_gap)} short on every single day.`],
-    ["Consistency is the biggest controllable lever", "More rides per season keep the rider on the fast, flat part of the fitness curve. The apparent decline since 2019 is a frequency problem rather than an ageing one, so even two rides a week would recover most of the early-season penalty."],
-    ["Dress for the cold, but don't blame it", `A truly cold morning costs well under a minute once fitness is accounted for (${seconds(cold.steps[cold.steps.length - 1].penalty_minutes)}s at ${cold.cold_f}°F). Heat costs nothing measurable up to 90°F. Weather is rarely a good reason to skip a ride.`],
-    ["Pick routes for reasons other than speed", "Route D's apparent edge is about 25 seconds of distance, not a faster road. Route B costs about 4 minutes. Without a deliberate A/B test on matched days, route choice should come down to safety and enjoyment."],
-    ["Log a few more variables", "Departure time, wind speed and direction, and rain would let the model separate route geometry from weather, which would explain the home-direction gap. A weather API join on the date would add them retroactively."],
-    ["The same trap shows up in client work", "Temperature, season and fitness moved together here, just as seasonality, spend and promotions move together in marketing data. Checking for confounding before naming a driver avoids recommending the wrong lever."],
+    ["Budget the trip home separately", `Plan on about 33 minutes in and 39 out. Borrow the morning's time for the evening and the commuter comes up ${Format.clock(gap.median_gap)} short, every day.`],
+    ["Frequency is the lever the rider controls", "More rides per season keep the rider on the fast, flat part of the fitness curve. The apparent decline since 2019 is a matter of frequency rather than age, so even two rides a week would recover most of the early-season penalty."],
+    ["Dress for the cold, don't blame it", `A truly cold morning costs well under a minute once fitness is accounted for (${seconds(cold.steps[cold.steps.length - 1].penalty_minutes)}s at ${cold.cold_f}°F). Heat costs nothing measurable up to 90°F. Weather is a poor reason to skip a ride.`],
+    ["Choose routes for reasons other than speed", "Route D's apparent edge is about 25 seconds of distance, not a faster road. Route B costs about 4 minutes. Without a deliberate A/B test on matched days, route choice comes down to safety and enjoyment."],
+    ["Log a few more variables", "Departure time, wind speed and direction, and rain would let a model separate route geometry from weather, and could help explain the home-direction gap. A weather API join on the date would add them retroactively."],
+    ["The same trap shows up in client work", "Temperature, season and fitness moved together here, just as seasonality, spend and promotions move together in marketing data. Check for confounding before naming a driver, or risk recommending the wrong lever."],
   ];
   d3.select("#implication-list")
     .selectAll("div")
@@ -343,21 +343,21 @@ function fillImplications() {
         `<div class="implication-index">${String(i + 1).padStart(2, "0")}</div><div><h3 class="font-display text-lg font-semibold">${title}</h3><p class="mt-2 text-sm leading-relaxed text-brand-muted">${body}</p></div>`
     );
   const methods = [
-    ["Feature engineering", "Minutes, mph, direction, ride number in season, days since last ride (log), day of year, years elapsed, route distance."],
+    ["Feature engineering", "Minutes, mph, direction, ride number within the season, days since last ride (log), day of year, years elapsed and route distance."],
     ["Paired inference", "One-sample t-test, Wilcoxon signed-rank and 5,000-draw bootstrap on same-day home − work gaps."],
     ["Regression", "OLS with heteroskedasticity-robust errors; linear mixed model with a random intercept per ride day."],
-    ["Confounding analysis", "Sequential adjustment of the cold penalty with day-level bootstrap intervals; season fixed effects with and without fitness controls."],
-    ["Non-parametric learners", "Penalised-spline GAM, random forest, LightGBM, ARD Gaussian process and an averaging ensemble."],
+    ["Confounding analysis", "The cold penalty adjusted step by step, with day-level bootstrap intervals. Season effects estimated with and without fitness controls."],
+    ["Non-parametric learners", "Penalised-spline GAM, random forest, LightGBM, an ARD Gaussian process and an averaging ensemble."],
     ["Validation", "5×5 repeated cross-validation grouped by ride day, plus forward-chaining season-ahead evaluation."],
     ["Interpretation", "Tree SHAP with interaction values, permutation importance, PDP + ICE, accumulated local effects, GP length-scales."],
-    ["Uncertainty", "Split-conformal prediction intervals with empirical coverage over 60 random splits."],
+    ["Uncertainty", "Split-conformal prediction intervals, with coverage checked over 60 random splits."],
   ];
   d3.select("#method-list")
     .selectAll("li")
     .data(methods)
     .join("li")
     .html(([t, b]) => `<b>${t}</b>${b}`);
-  d3.select("#generated").text(`Generated ${D.generated} from ${D.overview.headline.trips} trips`);
+  d3.select("#generated").text(`Analysis run ${D.generated}, from ${D.overview.headline.trips} trips`);
 }
 
 function renderCharts() {
@@ -449,6 +449,21 @@ function bindScroll() {
   document.querySelectorAll(".reveal").forEach((node) => observer.observe(node));
 }
 
+function bindMenu() {
+  const menu = document.getElementById("menu");
+  const setOpen = (open) => {
+    menu.classList.toggle("open", open);
+    menu.setAttribute("aria-hidden", String(!open));
+    document.body.style.overflow = open ? "hidden" : "";
+  };
+  document.getElementById("menu-open").addEventListener("click", () => setOpen(true));
+  document.getElementById("menu-close").addEventListener("click", () => setOpen(false));
+  menu.querySelectorAll("a").forEach((link) => link.addEventListener("click", () => setOpen(false)));
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") setOpen(false);
+  });
+}
+
 function init() {
   fillHeadline();
   fillFindings();
@@ -463,6 +478,8 @@ function init() {
   bindSegments();
   renderCharts();
   bindScroll();
+  bindMenu();
+  document.getElementById("hero-count").textContent = D.overview.headline.trips;
   let width = window.innerWidth;
   window.addEventListener("resize", () => {
     if (window.innerWidth === width) return;
