@@ -18,9 +18,10 @@ const SUGGESTIONS = [
 ];
 
 const THINKING_STEPS = [
-  { state: "searching", label: "Reading the trips" },
-  { state: "solving", label: "Checking the models" },
-  { state: "composing", label: "Writing an answer" },
+  { state: "searching", label: "Reading the trips", at: 0 },
+  { state: "solving", label: "Checking the models", at: 3000 },
+  { state: "composing", label: "Writing an answer", at: 6500 },
+  { state: "composing", label: "Still working on your answer, don't worry", at: 10000 },
 ];
 
 function SparkIcon() {
@@ -38,8 +39,8 @@ function SparkIcon() {
 function ThinkingRow() {
   const [step, setStep] = useState(0);
   useEffect(() => {
-    const timer = setInterval(() => setStep((value) => (value + 1) % THINKING_STEPS.length), 1800);
-    return () => clearInterval(timer);
+    const timers = THINKING_STEPS.slice(1).map(({ at }, index) => setTimeout(() => setStep(index + 1), at));
+    return () => timers.forEach(clearTimeout);
   }, []);
   const current = THINKING_STEPS[step];
   return h(
@@ -63,6 +64,7 @@ function Panel({ onClose }) {
 
   useEffect(() => {
     field.current?.focus();
+    fetch(ENDPOINT, { method: "GET" }).catch(() => {});
   }, []);
 
   useEffect(() => {

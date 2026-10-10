@@ -37,7 +37,7 @@ function fillHeadline() {
     [d3.format(",")(Math.round(h.total_miles)), "miles ridden"],
     [`+${Format.clock(gap.median_gap)}`, "slower going home"],
     [D.weather ? `${D.weather.headwind_seconds_per_mph.toFixed(0)}s` : "–", "per mph of headwind"],
-    [best.r2_mean.toFixed(2), "model R²"],
+    [best.r2_mean.toFixed(2), "out-of-sample R²"],
   ];
   d3.select("#kpis").selectAll("div").data(kpis).join("div").attr("class", "kpi")
     .html(([value, label]) => `<div class="kpi-value">${value}</div><div class="kpi-label">${label}</div>`);
@@ -96,7 +96,7 @@ function fillModels() {
   const linear = cv.find((r) => r.model === "Linear regression");
   const baseline = cv.find((r) => r.model.includes("baseline"));
   d3.select("#models-lede").html(
-    `The best model, an ensemble of a spline model, a Gaussian process and gradient boosting, predicts a trip within about <strong>${seconds(best.rmse_mean)} seconds</strong> (R² ${best.r2_mean.toFixed(2)}), against ${seconds(baseline.rmse_mean)}s for direction alone. ` +
+    `The best model, an ensemble of a spline model, a Gaussian process and gradient boosting, predicts a trip within about <strong>${seconds(best.rmse_mean)} seconds</strong> (out-of-sample R² ${best.r2_mean.toFixed(2)}), against ${seconds(baseline.rmse_mean)}s for direction alone. ` +
       `Plain linear regression comes within ${seconds(linear.rmse_mean - best.rmse_mean)} seconds: no hidden thresholds, just a few smooth effects and about a minute of day-to-day noise.`
   );
 }

@@ -398,7 +398,7 @@ def cold_penalty_decomposition(df: pd.DataFrame, cold: float = 35, mild: float =
                 "penalty_minutes": round(point, 3),
                 "ci_low": round(float(np.quantile(boot, 0.05)), 3),
                 "ci_high": round(float(np.quantile(boot, 0.95)), 3),
-                "r_squared": round(float(fitted.rsquared), 3),
+                **cv_formula(formula, work),
             }
         )
     correlations = work[["temperature_f", "season_ride_number", "day_of_year"]].corr(method="spearman")
@@ -412,7 +412,7 @@ def cold_penalty_decomposition(df: pd.DataFrame, cold: float = 35, mild: float =
         "spearman_temp_doy": round(float(correlations.loc["temperature_f", "day_of_year"]), 3),
     }
     for step in rows:
-        print(f"Cold penalty at {cold}°F vs {mild}°F, {step['model'].lower()}: {step['penalty_minutes'] * 60:.0f} s (90% CI {step['ci_low'] * 60:.0f} to {step['ci_high'] * 60:.0f} s, R² {step['r_squared']}).")
+        print(f"Cold penalty at {cold}°F vs {mild}°F, {step['model'].lower()}: {step['penalty_minutes'] * 60:.0f} s (90% CI {step['ci_low'] * 60:.0f} to {step['ci_high'] * 60:.0f} s); out-of-sample R² {step['cv_r_squared']}, RMSE {step['cv_rmse_s']:.0f} s.")
     print(f"Share of the raw cold penalty explained by fitness and the calendar: {result['share_explained_by_fitness']:.0%}.")
     print(f"Spearman correlation of temperature with ride number: {result['spearman_temp_ride']}, and with day of year: {result['spearman_temp_doy']}.")
     return result
@@ -512,7 +512,8 @@ def weekday_test(df: pd.DataFrame, residuals: pd.Series) -> dict:
 
 def run_inference(df: pd.DataFrame) -> dict:
     ols = adjusted_ols(df)
-    print(f"Adjusted OLS: R² = {ols.rsquared:.3f}, residual SD = {np.sqrt(ols.scale) * 60:.0f} s.")
+    ols_cv = cv_formula(ADJUSTED_FORMULA, df)
+    print(f"Adjusted OLS, cross-validated by ride day: out-of-sample R² = {ols_cv['cv_r_squared']}, RMSE = {ols_cv['cv_rmse_s']:.0f} s (training RMSE {ols_cv['train_rmse_s']:.0f} s).")
     for term, label, scale, unit in [
         ("is_home", "riding home", 1, "min"),
         ("season_ride_number", "each extra ride in the season", 60, "s"),
@@ -527,9 +528,7 @@ def run_inference(df: pd.DataFrame) -> dict:
         "direction_gap": direction_gap_tests(df),
         "ols": {
             "formula": ADJUSTED_FORMULA,
-            "r_squared": round(float(ols.rsquared), 3),
-            "adj_r_squared": round(float(ols.rsquared_adj), 3),
-            "residual_sd": round(float(np.sqrt(ols.scale)), 3),
+            **ols_cv,
             "coefficients": _coefficient_table(ols),
         },
         "temperature_optimum": temperature_optimum(ols),
@@ -587,15 +586,15 @@ def make_gam() -> object:
 
 def make_gbm() -> lgb.LGBMRegressor:
     return lgb.LGBMRegressor(
-        n_estimators=600,
+        n_estimators=400,
         learning_rate=0.02,
-        num_leaves=7,
-        max_depth=3,
-        min_child_samples=6,
+        num_leaves=3,
+        max_depth=2,
+        min_child_samples=15,
         subsample=0.8,
         subsample_freq=1,
         colsample_bytree=0.8,
-        reg_lambda=1.0,
+        reg_lambda=20.0,
         random_state=RANDOM_STATE,
         verbose=-1,
     )
@@ -610,7 +609,7 @@ def make_gp() -> object:
 
 def make_forest() -> RandomForestRegressor:
     return RandomForestRegressor(
-        n_estimators=500, min_samples_leaf=3, max_features=0.6, random_state=RANDOM_STATE, n_jobs=-1
+        n_estimators=500, min_samples_leaf=10, max_features=1.0, random_state=RANDOM_STATE, n_jobs=-1
     )
 
 
@@ -636,6 +635,33 @@ def grouped_folds(groups: pd.Series, n_splits: int, repeats: int):
             yield repeat, fold, np.where(~test_mask)[0], np.where(test_mask)[0]
 
 
+def _cv_summary(y: np.ndarray, predictions: np.ndarray, train_errors: list[float]) -> dict:
+    total = float(((y - y.mean()) ** 2).sum())
+    r2 = [1 - float(((y - row) ** 2).sum()) / total for row in predictions]
+    rmse = [float(np.sqrt(((y - row) ** 2).mean())) for row in predictions]
+    return {
+        "cv_r_squared": round(float(np.mean(r2)), 3),
+        "cv_rmse_s": round(float(np.mean(rmse)) * 60, 1),
+        "train_rmse_s": round(float(np.mean(train_errors)) * 60, 1),
+    }
+
+
+def cv_formula(formula: str, data: pd.DataFrame, n_splits: int = 5, repeats: int = 5) -> dict:
+    data = data.reset_index(drop=True)
+    if "route" in data:
+        data = data.assign(route=pd.Categorical(data["route"], categories=sorted(data["route"].unique())))
+    y = data["minutes"].to_numpy()
+    predictions = np.zeros((repeats, len(data)))
+    train_errors = []
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for repeat, _, train, test in grouped_folds(data["date"], n_splits, repeats):
+            fitted = smf.ols(formula, data=data.iloc[train]).fit()
+            predictions[repeat, test] = fitted.predict(data.iloc[test])
+            train_errors.append(float(np.sqrt(np.mean(fitted.resid ** 2))))
+    return _cv_summary(y, predictions, train_errors)
+
+
 def _scores(y_true, y_pred) -> dict:
     return {
         "rmse": float(np.sqrt(mean_squared_error(y_true, y_pred))),
@@ -654,16 +680,20 @@ def cross_validate(df: pd.DataFrame, n_splits: int = 5, repeats: int = 5) -> tup
             fitted = clone(estimator).fit(X.iloc[train], y[train])
             prediction = fitted.predict(X.iloc[test])
             oof[name][repeat, test] = prediction
-            records.append({"model": name, "repeat": repeat, "fold": fold, **_scores(y[test], prediction)})
+            train_rmse = float(np.sqrt(np.mean((y[train] - fitted.predict(X.iloc[train])) ** 2)))
+            records.append({"model": name, "repeat": repeat, "fold": fold, "train_rmse": train_rmse, **_scores(y[test], prediction)})
     folds = pd.DataFrame(records)
     summary = (
-        folds.groupby("model")[["rmse", "mae", "r2"]]
+        folds.groupby("model")[["rmse", "mae", "r2", "train_rmse"]]
         .agg(["mean", "std"])
         .sort_values(("rmse", "mean"))
     )
     summary.columns = [f"{metric}_{stat}" for metric, stat in summary.columns]
     for model, row in summary.iterrows():
-        print(f"Cross-validated RMSE for {model}: {row['rmse_mean'] * 60:.0f} s (MAE {row['mae_mean'] * 60:.0f} s, R² {row['r2_mean']:.3f}).")
+        print(f"Cross-validated RMSE for {model}: {row['rmse_mean'] * 60:.0f} s (MAE {row['mae_mean'] * 60:.0f} s, out-of-sample R² {row['r2_mean']:.3f}).")
+    for model, row in summary.iterrows():
+        gap = row["rmse_mean"] / row["train_rmse_mean"] - 1
+        print(f"Overfitting check for {model}: training RMSE {row['train_rmse_mean'] * 60:.0f} s vs held-out {row['rmse_mean'] * 60:.0f} s, a {gap:+.0%} gap.")
     out_of_fold = {name: values.mean(axis=0) for name, values in oof.items()}
     return summary.reset_index(), out_of_fold
 
@@ -1025,10 +1055,79 @@ def best_bearing(df: pd.DataFrame, bearings: np.ndarray) -> tuple[float, float, 
     return bearing, cost, [round(1 - ssr / total, 4) for ssr, _, _ in fits]
 
 
+def _headwind_folds(primary: pd.DataFrame, bearings: np.ndarray, n_splits: int = 5, repeats: int = 5):
+    for repeat, fold, train, test in grouped_folds(primary["date"], n_splits, repeats):
+        bearing, _, _ = best_bearing(primary.iloc[train].reset_index(drop=True), bearings)
+        yield repeat, fold, train, test, bearing, headwind(primary, bearing).to_numpy()
+
+
+def wind_cv(primary: pd.DataFrame, bearings: np.ndarray, n_splits: int = 5, repeats: int = 5) -> dict:
+    y = primary["minutes"].to_numpy()
+    base_design = _wind_design(primary)
+    predictions = {"without": np.zeros((repeats, len(primary))), "with": np.zeros((repeats, len(primary)))}
+    train_errors = {"without": [], "with": []}
+    chosen, wins = [], []
+    for repeat, _, train, test, bearing, wind in _headwind_folds(primary, bearings, n_splits, repeats):
+        chosen.append(bearing)
+        fold_rmse = {}
+        for key, X in (("without", base_design), ("with", np.c_[base_design, wind])):
+            beta, *_ = np.linalg.lstsq(X[train], y[train], rcond=None)
+            predictions[key][repeat, test] = X[test] @ beta
+            train_errors[key].append(float(np.sqrt(np.mean((y[train] - X[train] @ beta) ** 2))))
+            fold_rmse[key] = float(np.sqrt(np.mean((y[test] - X[test] @ beta) ** 2)))
+        wins.append(fold_rmse["with"] < fold_rmse["without"])
+    deviation = np.abs(((np.array(chosen) - 290 + 180) % 360) - 180)
+    return {
+        "without_wind": _cv_summary(y, predictions["without"], train_errors["without"]),
+        "with_wind": _cv_summary(y, predictions["with"], train_errors["with"]),
+        "wind_better_share": round(float(np.mean(wins)), 3),
+        "fold_bearing_range": [float(min(chosen)), float(max(chosen))],
+        "fold_bearing_within_15": round(float(np.mean(deviation <= 15)), 3),
+    }
+
+
+ABLATION_STEPS = [
+    ("direction only", "minutes ~ is_home"),
+    ("+ temperature", " + temperature_f + I(temperature_f ** 2)"),
+    ("+ fitness (ride number, days off)", " + season_ride_number + log_days_since_last_ride"),
+    ("+ calendar and year", " + day_of_year + years_elapsed"),
+    ("+ headwind", " + headwind"),
+    ("+ rain", " + precipitation"),
+]
+
+
+def predictive_ablation(df: pd.DataFrame, n_splits: int = 5, repeats: int = 5) -> list[dict]:
+    primary = df[df["is_primary_route"]].reset_index(drop=True)
+    y = primary["minutes"].to_numpy()
+    bearings = np.arange(0, 360, 5)
+    formulas, formula = [], ""
+    for label, piece in ABLATION_STEPS:
+        formula = formula + piece
+        formulas.append((label, formula))
+    predictions = {label: np.zeros((repeats, len(primary))) for label, _ in formulas}
+    train_errors = {label: [] for label, _ in formulas}
+    for repeat, _, train, test, _, wind in _headwind_folds(primary, bearings, n_splits, repeats):
+        data = primary.assign(headwind=wind)
+        for label, f in formulas:
+            fitted = smf.ols(f, data=data.iloc[train]).fit()
+            predictions[label][repeat, test] = fitted.predict(data.iloc[test])
+            train_errors[label].append(float(np.sqrt(np.mean(fitted.resid ** 2))))
+    rows, previous = [], None
+    for label, _ in formulas:
+        summary = _cv_summary(y, predictions[label], train_errors[label])
+        summary["step"] = label
+        summary["rmse_change_s"] = None if previous is None else round(summary["cv_rmse_s"] - previous, 1)
+        previous = summary["cv_rmse_s"]
+        rows.append(summary)
+        change = "" if summary["rmse_change_s"] is None else f", {summary['rmse_change_s']:+.1f} s vs the previous step"
+        print(f"Out-of-sample R² with {label}: {summary['cv_r_squared']} (RMSE {summary['cv_rmse_s']:.0f} s{change}; training RMSE {summary['train_rmse_s']:.0f} s).")
+    return rows
+
+
 def wind_analysis(df: pd.DataFrame, reps: int = 500) -> dict:
     primary = df[df["is_primary_route"]].reset_index(drop=True)
     bearings = np.arange(0, 360, 5)
-    bearing, cost, profile = best_bearing(primary, bearings)
+    bearing, cost, _ = best_bearing(primary, bearings)
 
     rng = np.random.default_rng(RANDOM_STATE)
     groups = {day: np.where(primary["date"] == day)[0] for day in primary["date"].unique()}
@@ -1052,6 +1151,7 @@ def wind_analysis(df: pd.DataFrame, reps: int = 500) -> dict:
         fitted = smf.ols(base_formula + " + headwind + " + term, data=data).fit(cov_type="HC1")
         extras[term] = {"estimate": round(float(fitted.params[term]), 4), "p_value": float(fitted.pvalues[term])}
 
+    cross_validated = wind_cv(primary, bearings)
     adjusted = smf.ols(base_formula, data=data).fit()
     points = data.assign(adjusted_seconds=adjusted.resid * 60)[["date", "destination", "headwind", "adjusted_seconds", "wind_speed_10m", "wind_direction_10m"]]
 
@@ -1075,11 +1175,12 @@ def wind_analysis(df: pd.DataFrame, reps: int = 500) -> dict:
         "work_bearing_ci": [round(bearing + float(np.percentile(boot_bearings, 5))), round(bearing + float(np.percentile(boot_bearings, 95)))],
         "headwind_seconds_per_mph": round(cost * 60, 2),
         "headwind_seconds_ci": [round(float(np.percentile(boot_costs, 5)) * 60, 1), round(float(np.percentile(boot_costs, 95)) * 60, 1)],
-        "bearing_profile": {"bearings": bearings.tolist(), "r_squared": profile},
-        "r_squared_without_wind": round(float(base.rsquared), 4),
-        "r_squared_with_wind": round(float(with_wind.rsquared), 4),
-        "residual_sd_without_wind_s": round(float(np.sqrt(base.mse_resid)) * 60, 1),
-        "residual_sd_with_wind_s": round(float(np.sqrt(with_wind.mse_resid)) * 60, 1),
+        "cv_r_squared_without_wind": cross_validated["without_wind"]["cv_r_squared"],
+        "cv_r_squared_with_wind": cross_validated["with_wind"]["cv_r_squared"],
+        "cv_rmse_without_wind_s": cross_validated["without_wind"]["cv_rmse_s"],
+        "cv_rmse_with_wind_s": cross_validated["with_wind"]["cv_rmse_s"],
+        "wind_better_share": cross_validated["wind_better_share"],
+        "fold_bearing_range": cross_validated["fold_bearing_range"],
         "home_penalty_without_wind": round(float(base.params["is_home"]), 3),
         "home_penalty_with_wind": round(float(with_wind.params["is_home"]), 3),
         "headwind_p_value": float(with_wind.pvalues["headwind"]),
@@ -1094,7 +1195,9 @@ def wind_analysis(df: pd.DataFrame, reps: int = 500) -> dict:
     print(f"Departure hours matched with a median temperature gap of {result['temperature_match_error_median']}°F (correlation {result['temperature_match_correlation']}).")
     print(f"Best-fitting bearing for the ride to work: {result['work_bearing_deg']:.0f}° (90% CI {result['work_bearing_ci'][0]} to {result['work_bearing_ci'][1]}°).")
     print(f"Each mph of headwind adds {result['headwind_seconds_per_mph']} s (90% CI {result['headwind_seconds_ci'][0]} to {result['headwind_seconds_ci'][1]} s), p = {result['headwind_p_value']:.1e}.")
-    print(f"R² goes from {result['r_squared_without_wind']} without wind to {result['r_squared_with_wind']} with it, and the home penalty moves from {result['home_penalty_without_wind']} to {result['home_penalty_with_wind']} min.")
+    print(f"Out of sample, with the bearing re-chosen inside each training fold: R² goes from {result['cv_r_squared_without_wind']} to {result['cv_r_squared_with_wind']} and RMSE from {result['cv_rmse_without_wind_s']:.0f} s to {result['cv_rmse_with_wind_s']:.0f} s.")
+    print(f"Wind lowered the held-out error in {result['wind_better_share']:.0%} of 25 folds, and the in-fold bearing stayed between {result['fold_bearing_range'][0]:.0f}° and {result['fold_bearing_range'][1]:.0f}°.")
+    print(f"With wind in the model, the home penalty moves from {result['home_penalty_without_wind']} to {result['home_penalty_with_wind']} min.")
     for destination, row in by_direction.items():
         print(f"Rides to {destination.lower()} averaged {row['mean_wind_mph']} mph of wind from {row['wind_from_deg']:.0f}°, a mean headwind of {row['mean_headwind_mph']:+} mph.")
     for term, row in extras.items():
@@ -1225,8 +1328,9 @@ def weather_lines(weather: dict | None) -> list[str]:
         f"Searching every compass bearing, the ride to work heads about {weather['work_bearing_deg']:.0f}° (west-north-west; "
         f"90% CI {weather['work_bearing_ci'][0]}–{weather['work_bearing_ci'][1]}°), so the ride home heads east-south-east.",
         f"Each mph of headwind adds {weather['headwind_seconds_per_mph']} s (90% CI {weather['headwind_seconds_ci'][0]}–{weather['headwind_seconds_ci'][1]} s, "
-        f"p={weather['headwind_p_value']:.1e}). Adding wind lifts R² from {weather['r_squared_without_wind']} to {weather['r_squared_with_wind']} "
-        f"and cuts the typical error from {weather['residual_sd_without_wind_s']} s to {weather['residual_sd_with_wind_s']} s.",
+        f"p={weather['headwind_p_value']:.1e}). Cross-validated by ride day, with the bearing re-chosen inside each training fold, adding wind lifts out-of-sample R² "
+        f"from {weather['cv_r_squared_without_wind']} to {weather['cv_r_squared_with_wind']} and cuts the prediction error from {weather['cv_rmse_without_wind_s']} s to {weather['cv_rmse_with_wind_s']} s; "
+        f"wind helped in {weather['wind_better_share']:.0%} of folds.",
         f"Evening winds are stronger ({home['mean_wind_mph']} mph vs {work['mean_wind_mph']} mph) and come from about {home['wind_from_deg']:.0f}°, "
         f"giving the ride home an average tailwind of {abs(home['mean_headwind_mph'])} mph. Wind therefore does not explain why home is slower: "
         f"with wind controlled the home penalty grows from {weather['home_penalty_without_wind']} to {weather['home_penalty_with_wind']} min, "
@@ -1331,6 +1435,8 @@ def run(cv_repeats: int = 5, bootstrap_reps: int = 300, conformal_reps: int = 60
     weather_trips = attach_weather(df, load_weather(df))
     weather_trips.to_csv(WEATHER_TRIPS_FILE, index=False)
     weather_results = wind_analysis(weather_trips)
+    print("\nWhat each piece adds to out-of-sample prediction")
+    weather_results["ablation"] = predictive_ablation(weather_trips)
 
     print("\nCross-validating the models")
     cv_summary, oof = cross_validate(df, repeats=cv_repeats)
