@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>The Commute, Decoded</title>
+  <meta name="ask-endpoint" content="https://YOUR-VERCEL-PROJECT.vercel.app/api/ask">
   <meta name="description" content="Seven seasons of bicycle commuting analysed with statistics and machine learning.">
   <link rel="icon" type="image/png" href="assets/brand-mark.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -39,8 +40,74 @@
     };
   </script>
   <link rel="stylesheet" href="css/site.css">
+  <style>
+    html:not(.is-loaded) body { overflow: hidden; }
+    #loader { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; background: radial-gradient(ellipse 60% 50% at 50% 45%, #0f1416 0%, #050607 70%); transition: opacity 0.9s ease, visibility 0.9s ease; }
+    html.is-loaded #loader { opacity: 0; visibility: hidden; }
+    .loader-inner { display: flex; flex-direction: column; align-items: center; gap: 2rem; }
+    .loader-wheel { width: 132px; height: 132px; animation: loader-spin 1.6s linear infinite; }
+    @keyframes loader-spin { to { transform: rotate(360deg); } }
+    .loader-text { font-family: "Jost", "Futura", sans-serif; font-weight: 300; font-size: 0.78rem; letter-spacing: 0.5em; text-transform: uppercase; color: #ece9e4; padding-left: 0.5em; }
+    .loader-text span { display: inline-block; animation: loader-dot 1.4s infinite; opacity: 0; letter-spacing: 0.2em; }
+    .loader-text span:nth-child(2) { animation-delay: 0.2s; }
+    .loader-text span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes loader-dot { 0%, 15% { opacity: 0; } 30%, 70% { opacity: 1; } 85%, 100% { opacity: 0; } }
+    @media (prefers-reduced-motion: reduce) { .loader-wheel { animation-duration: 6s; } }
+  </style>
+  <script>
+    (function () {
+      if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+      var state = { bike: false, page: false, done: false };
+      function reveal() {
+        if (state.done) return;
+        state.done = true;
+        window.scrollTo(0, 0);
+        document.documentElement.classList.add("is-loaded");
+        window.dispatchEvent(new Event("app:revealed"));
+        setTimeout(function () {
+          var loader = document.getElementById("loader");
+          if (loader) loader.remove();
+        }, 1000);
+      }
+      function check() {
+        if (state.bike && state.page) reveal();
+      }
+      window.addEventListener("bike:ready", function () {
+        state.bike = true;
+        check();
+      });
+      window.addEventListener("load", function () {
+        var fonts = document.fonts ? document.fonts.ready : Promise.resolve();
+        fonts.then(function () {
+          state.page = true;
+          check();
+        });
+      });
+      setTimeout(reveal, 20000);
+    })();
+  </script>
 </head>
 <body class="bg-brand-black text-brand-ink font-sans antialiased selection:bg-brand-orange/40">
+
+  <div id="loader" role="status" aria-live="polite">
+    <div class="loader-inner">
+      <svg class="loader-wheel" viewBox="0 0 120 120" aria-hidden="true">
+        <circle cx="60" cy="60" r="55" fill="none" stroke="#141819" stroke-width="7" />
+        <circle cx="60" cy="60" r="47" fill="none" stroke="#0b0d0e" stroke-width="9" />
+        <circle cx="60" cy="60" r="49" fill="none" stroke="#f27b38" stroke-width="0.8" />
+        <g stroke="#3a4146" stroke-width="0.9" stroke-linecap="round">
+          <line x1="60" y1="60" x2="60" y2="17" /><line x1="60" y1="60" x2="81.5" y2="22.8" /><line x1="60" y1="60" x2="97.2" y2="38.5" />
+          <line x1="60" y1="60" x2="103" y2="60" /><line x1="60" y1="60" x2="97.2" y2="81.5" /><line x1="60" y1="60" x2="81.5" y2="97.2" />
+          <line x1="60" y1="60" x2="60" y2="103" /><line x1="60" y1="60" x2="38.5" y2="97.2" /><line x1="60" y1="60" x2="22.8" y2="81.5" />
+          <line x1="60" y1="60" x2="17" y2="60" /><line x1="60" y1="60" x2="22.8" y2="38.5" /><line x1="60" y1="60" x2="38.5" y2="22.8" />
+        </g>
+        <circle cx="60" cy="60" r="7" fill="#15181a" stroke="#2c3236" />
+        <circle cx="60" cy="60" r="3" fill="#f27b38" />
+        <path d="M60 4.5 A55.5 55.5 0 0 1 105 30" fill="none" stroke="#f27b38" stroke-width="2.2" stroke-linecap="round" />
+      </svg>
+      <p class="loader-text">Loading<span>.</span><span>.</span><span>.</span></p>
+    </div>
+  </div>
 
   <header id="topbar" class="fixed inset-x-0 top-0 z-50 transition-all duration-500">
     <nav class="mx-auto grid max-w-[96rem] grid-cols-3 items-center px-5 py-5 sm:px-10">
