@@ -36,8 +36,8 @@ function fillHeadline() {
     [h.trips, "trips logged"],
     [d3.format(",")(Math.round(h.total_miles)), "miles ridden"],
     [`+${Format.clock(gap.median_gap)}`, "slower going home"],
-    [D.weather ? `${D.weather.headwind_seconds_per_mph.toFixed(0)}s` : "–", "per mph of headwind"],
-    [best.r2_mean.toFixed(2), "out-of-sample R²"],
+    [D.weather ? `${D.weather.headwind_seconds_per_mph.toFixed(1)}s` : "–", "per mph of headwind"],
+    [best.r2_mean.toFixed(2), "out-of-sample R², log only"],
   ];
   d3.select("#kpis").selectAll("div").data(kpis).join("div").attr("class", "kpi")
     .html(([value, label]) => `<div class="kpi-value">${value}</div><div class="kpi-label">${label}</div>`);
@@ -45,14 +45,17 @@ function fillHeadline() {
 
 function fillFindings() {
   const gap = D.inference.direction_gap;
-  const cold = D.inference.cold_penalty;
+  const steps = D.inference.cold_penalty.steps;
+  const first = steps[0].penalty_minutes;
+  const last = steps[steps.length - 1].penalty_minutes;
   const w = D.weather;
+  const rides = Object.fromEntries(D.overview.frequency.map((d) => [d.season, d.trips]));
   const cards = [
     [`+${Format.clock(gap.median_gap)}`, "Home is always slower", `Slower on all ${gap.n_pairs} days ridden both ways on the same route.`, "#direction"],
-    [w ? `${w.headwind_seconds_per_mph.toFixed(0)}s` : "–", "Per mph of headwind", "Wind matters, but evenings bring a tailwind home, so it doesn't explain the gap.", "#direction"],
+    [w ? `${w.headwind_seconds_per_mph.toFixed(1)}s` : "–", "Per mph of headwind", "Wind matters, but evenings bring a tailwind home, so it doesn't explain the gap.", "#weather"],
     [`−${seconds(fitnessSwing())}s`, "Fitness builds each season", "From the first ride of a season to peak form, levelling off after about 15 rides.", "#fitness"],
-    [`${Math.round(cold.share_explained_by_fitness * 100)}%`, "Of the cold penalty is fitness", "Cold mornings come early in the season, when the legs are least trained.", "#fitness"],
-    [`−${Math.abs(seconds(likeForLike()))}s`, "Faster than 2019, like for like", "Rides fell from 56 a year to single digits. The rider didn't slow down.", "#years"],
+    [`${seconds(first)}s → ${seconds(last)}s`, "Most of the cold penalty washes out", "Cold mornings fall early in the season, before the legs are trained. Adjust for fitness and time of year and what's left is within the noise.", "#fitness"],
+    [`−${Math.abs(seconds(likeForLike()))}s`, "Faster than 2019, at equal fitness", `Rides fell from ${rides[2019]} in 2019 to ${rides[2024]} by 2024. Compared at the same point in the season, 2022–24 were faster, not slower.`, "#years"],
   ];
   d3.select("#finding-cards").selectAll("a").data(cards).join("a").attr("href", (d) => d[3]).attr("class", "finding reveal block")
     .html(([value, title, body]) =>
@@ -63,7 +66,7 @@ function fillFindings() {
 function fillDirection() {
   const gap = D.inference.direction_gap;
   d3.select("#direction-lede").html(
-    `On every one of the ${gap.n_pairs} days ridden both ways on Route A, the trip home took longer, by a median of <strong>${Format.clock(gap.median_gap)}</strong>. Same rider, same bike, same day, same route. Only the direction changes.`
+    `On every one of the ${gap.n_pairs} days ridden both ways on Route A, the trip home took longer, by a median of <strong>${Format.clock(gap.median_gap)}</strong>. Same rider, same bike, same day, same route. What changes is the direction and the time of day: morning versus evening traffic and light, and a full workday's worth of tiredness on the way home.`
   );
 }
 
@@ -76,7 +79,8 @@ function fillWeather() {
   d3.select("#weather-lede").html(
     `The original log had no wind or rain, so hourly weather for central Pittsburgh was pulled from the Open-Meteo historical archive for every ride day. Each ride's departure hour was found by matching its recorded temperature to the hourly readings (median mismatch ${w.temperature_match_error_median}°F). ` +
       `Testing every compass bearing, held-out trips are predicted best if the ride to work heads <strong>${Math.round(w.work_bearing_deg)}°, west-north-west</strong> (90% CI ${w.work_bearing_ci[0]}–${w.work_bearing_ci[1]}°). ` +
-      `On that line, each mph of headwind costs <strong>${w.headwind_seconds_per_mph.toFixed(1)} seconds</strong>.`
+      `On that line, each mph of headwind costs <strong>${w.headwind_seconds_per_mph.toFixed(1)} seconds</strong>. ` +
+      `One caveat: departure times weren't logged, so the matched hour is an estimate. When it's off, the wind reading is off too, which blurs the effect rather than creating it.`
   );
   const tiles = [
     [`${w.headwind_seconds_per_mph.toFixed(1)}s`, `per mph of headwind (90% CI ${w.headwind_seconds_ci[0]}–${w.headwind_seconds_ci[1]}s)`],
@@ -88,7 +92,7 @@ function fillWeather() {
     .html(([v, l]) => `<div class="stat-value">${v}</div><div class="stat-label">${l}</div>`);
   d3.select("#weather-callout").html(
     `<strong>Wind rules itself out as the cause of the slow ride home.</strong> Evening winds are stronger, but they blow from about ${Math.round(home.wind_from_deg)}°, which on this route is a <em>tailwind</em> home (${Math.abs(home.mean_headwind_mph)} mph on average). ` +
-      `Controlling for wind makes the home penalty slightly larger, ${w.home_penalty_without_wind.toFixed(2)} → ${w.home_penalty_with_wind.toFixed(2)} minutes. What remains points to the road itself: most likely a net climb toward home, or evening traffic and lights.`
+      `Controlling for wind makes the home penalty slightly larger, ${w.home_penalty_without_wind.toFixed(2)} → ${w.home_penalty_with_wind.toFixed(2)} minutes. What remains is something the log can't see: most likely a net climb toward home, evening traffic and lights, or end-of-day fatigue. Elevation and traffic weren't recorded, so that's the likeliest explanation rather than a measured one.`
   );
 }
 
@@ -97,17 +101,22 @@ function fillFitness() {
   const cold = D.inference.cold_penalty;
   const steps = cold.steps;
   d3.select("#fitness-lede").html(
-    `Each ride in a season makes the next about <strong>${Math.abs(seconds(ride.estimate))} seconds faster</strong>, worth about ${seconds(fitnessSwing())} seconds from the first ride to peak form. ` +
-      `Cold mornings look costly (${seconds(steps[0].penalty_minutes)}s at ${cold.cold_f}°F vs. ${cold.mild_f}°F), but they cluster early in the season. Account for fitness and the cold penalty drops to <strong>${seconds(steps[steps.length - 1].penalty_minutes)} seconds</strong>. Heat costs nothing.`
+    `On average, each ride in a season makes the next about <strong>${Math.abs(seconds(ride.estimate))} seconds faster</strong>. The gains come early and level off after about 15 rides, worth roughly ${seconds(fitnessSwing())} seconds from the first ride to peak form. ` +
+      `Cold mornings look costly (${seconds(steps[0].penalty_minutes)}s at ${cold.cold_f}°F vs. ${cold.mild_f}°F), but they fall early in the season, before the legs are trained. Fitness alone brings that down to ${seconds(steps[1].penalty_minutes)}s. Adding time of year, days off and year brings it to <strong>${seconds(steps[steps.length - 1].penalty_minutes)} seconds</strong>, and the 90% interval (${seconds(steps[steps.length - 1].ci_low)} to ${seconds(steps[steps.length - 1].ci_high)}s) now includes zero. Heat costs nothing.`
   );
   d3.select("#cold-sub").text(`Extra seconds on a ${cold.cold_f}°F vs. ${cold.mild_f}°F morning, as each control is added.`);
 }
 
 function fillYears() {
   const trend = D.inference.trend;
+  const effects = Object.fromEntries(trend.season_effects_fitness_adjusted.map((d) => [d.season, d]));
+  const rides = Object.fromEntries(D.overview.frequency.map((d) => [d.season, d.trips]));
+  const latest = effects[2026];
+  const latestText = Math.abs(seconds(latest.estimate)) < 15 ? "level with 2019" : `${Math.abs(seconds(latest.estimate))}s ${latest.estimate < 0 ? "faster" : "slower"} than 2019, within the noise`;
   d3.select("#years-lede").html(
-    `Taken at face value, trips get ${trend.naive_years_coef_seconds}s slower each year. But the bike came out ${D.overview.frequency[0].trips} times in 2019 and far less since, so later seasons rarely got past the slow early rides. ` +
-      `Compare like for like and the 2022–24 seasons were <strong>${Math.abs(seconds(likeForLike()))}s faster</strong> than 2019.`
+    `Taken at face value, trips get ${trend.naive_years_coef_seconds}s slower each year. But the bike came out ${rides[2019]} times in 2019 and only ${rides[2024]} times in 2024, so later seasons rarely got past the slow early rides. ` +
+      `Compare at the same point in the season and 2022–24 were each about <strong>${Math.abs(seconds(likeForLike()))}s faster</strong> than 2019, with all three intervals clear of zero. ` +
+      `The thin seasons are harder to read: 2021 and 2025 lean faster but are too uncertain to call, and 2026 (${rides[2026]} rides) comes out ${latestText}.`
   );
 }
 
@@ -117,8 +126,9 @@ function fillModels() {
   const linear = cv.find((r) => r.model === "Linear regression");
   const baseline = cv.find((r) => r.model.includes("baseline"));
   d3.select("#models-lede").html(
-    `The best model, an ensemble of a spline model, a Gaussian process and gradient boosting, predicts a trip within about <strong>${seconds(best.rmse_mean)} seconds</strong> (out-of-sample R² ${best.r2_mean.toFixed(2)}), against ${seconds(baseline.rmse_mean)}s for direction alone. ` +
-      `Plain linear regression comes within ${seconds(linear.rmse_mean - best.rmse_mean)} seconds: no hidden thresholds, just a few smooth effects and about a minute of day-to-day noise.`
+    `The best model, an ensemble of a spline model, a Gaussian process and gradient boosting, predicts a trip with a typical error of <strong>${seconds(best.rmse_mean)} seconds</strong> (out-of-sample R² ${best.r2_mean.toFixed(2)}), against ${seconds(baseline.rmse_mean)}s for direction alone. ` +
+      `Plain linear regression comes within ${seconds(linear.rmse_mean - best.rmse_mean)} seconds: no hidden thresholds, just a few smooth effects and about a minute of day-to-day noise. ` +
+      `None of these models use weather; they're built on the original log alone. A plain linear model with headwind added does better (out-of-sample R² ${D.weather ? D.weather.cv_r_squared_with_wind.toFixed(2) : "–"} on Route A trips, in the Wind &amp; weather section). The bigger gain came from better data, not a fancier algorithm.`
   );
 }
 
@@ -170,16 +180,16 @@ function updatePlanner() {
 function fillImplications() {
   const gap = D.inference.direction_gap;
   const items = [
-    ["Ride more often", `Two or three rides a week keeps you at peak form, worth about ${seconds(fitnessSwing())} seconds a trip. It's the biggest lever.`],
-    ["Budget the ride home separately", `Plan on about 33 minutes in and 39 out. The evening ride is ${Format.clock(gap.median_gap)} slower every time.`],
-    ["Check the wind, not the thermometer", "A 10 mph headwind costs over a minute; a cold morning costs under one once fitness is accounted for."],
-    ["Take Route D to work", "It's 0.1 mile shorter, which saves about 25 seconds. Avoid Route B, which adds about 4 minutes."],
+    ["Ride regularly", `Speed builds over the first 15 or so rides of a season and slips a little after long breaks, worth up to about ${seconds(fitnessSwing())} seconds a trip. The log counts rides per season, not per week, so it can't say exactly how often is enough.`],
+    ["Budget the ride home separately", `Plan on about 33 minutes in and 39 out. The ride home was slower on every day ridden both ways, by a median of ${Format.clock(gap.median_gap)}.`],
+    ["Check the wind, not the thermometer", `A 10 mph headwind costs about ${D.weather ? seconds(D.weather.headwind_seconds_per_mph / 6) : 70} seconds. Once fitness and time of year are accounted for, a cold morning costs less than that, and possibly nothing.`],
+    ["Route D is worth a try; skip Route B", "Route D is 0.1 mile shorter, worth about 25 seconds. Its 7 rides were all in autumn 2019, and against Route A in the same weeks the difference wasn't significant. Route B is 0.9 mile longer, roughly 4 extra minutes, based on one ride each way."],
   ];
   d3.select("#implication-list").selectAll("div").data(items).join("div").attr("class", "implication reveal")
     .html(([title, body], i) =>
       `<div class="implication-index">${String(i + 1).padStart(2, "0")}</div><div><h3 class="font-display text-lg font-semibold">${title}</h3><p class="mt-2 text-sm leading-relaxed text-brand-muted">${body}</p></div>`);
   d3.select("#caveat").text(
-    "Based on 143 trips. Weather is hourly reanalysis for central Pittsburgh (Open-Meteo), matched to each ride by its recorded temperature. Elevation and traffic weren't recorded, and results are associations, not experiments."
+    "Based on 143 trips. Weather is hourly reanalysis for central Pittsburgh (Open-Meteo), matched to each ride by its recorded temperature, so departure hours are estimates. Elevation and traffic weren't recorded, and the models section uses the original log only. Results are associations, not experiments."
   );
   d3.select("#generated").text(`Analysis run ${D.generated}`);
 }

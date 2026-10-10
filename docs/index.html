@@ -247,7 +247,7 @@
       <div id="weather-tiles" class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4"></div>
       <div class="card mt-6">
         <h3 class="chart-title">What each piece adds to prediction</h3>
-        <p class="chart-sub">Out-of-sample R² on held-out ride days as each factor joins the model. A bar that barely moves means that factor doesn't help predict new trips.</p>
+        <p class="chart-sub">Out-of-sample R² on held-out ride days as each factor joins a plain linear model (Route A trips). A bar that barely moves means that factor doesn't help predict new trips.</p>
         <div id="ablation" class="chart h-[300px]"></div>
       </div>
       <div class="callout mt-6" id="weather-callout"></div>
@@ -286,7 +286,7 @@
           <div id="frequency" class="chart mt-4 h-[300px]"></div>
         </div>
         <div class="card lg:col-span-3">
-          <h3 class="chart-title">Speed vs. 2019, like for like</h3>
+          <h3 class="chart-title">Speed vs. 2019, at equal fitness</h3>
           <div class="legend mt-3"><span class="key sky"></span>Direction &amp; temperature adjusted <span class="key orange ml-4"></span>+ fitness adjusted</div>
           <div id="season-effects" class="chart h-[300px]"></div>
         </div>
@@ -301,7 +301,7 @@
       </div>
       <div class="card mt-10">
         <h3 class="chart-title">Prediction error by model</h3>
-        <p class="chart-sub">Cross-validated, grouped by ride day so a morning and evening ride never split across training and testing.</p>
+        <p class="chart-sub">Cross-validated, grouped by ride day so a morning and evening ride never split across training and testing. Built on the original log, without weather.</p>
         <div id="leaderboard" class="chart h-[320px]"></div>
       </div>
     </section>
