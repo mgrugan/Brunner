@@ -252,23 +252,37 @@ body {
 }
 
 .bike-wrap {
-  --bike-width: min(62vw, 980px);
   position: absolute;
+  inset: 0;
   z-index: 2;
-  width: var(--bike-width);
-  left: 61%;
-  top: 56%;
-  margin-left: calc(var(--bike-width) / -2);
-  margin-top: calc(var(--bike-width) * -0.33);
   will-change: transform;
-  filter: drop-shadow(0 30px 40px rgba(0, 0, 0, 0.6));
 }
 
-.bike-wrap svg {
+.bike-wrap canvas {
   display: block;
   width: 100%;
-  height: auto;
-  overflow: visible;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 1.2s ease;
+}
+
+.bike-wrap.is-ready canvas {
+  opacity: 1;
+}
+
+.bike-poster {
+  position: absolute;
+  left: 50%;
+  top: 56%;
+  width: min(58vw, 900px);
+  transform: translate(-30%, -50%);
+  opacity: 0;
+  filter: drop-shadow(0 30px 40px rgba(0, 0, 0, 0.7)) brightness(0.8);
+  transition: opacity 1s ease;
+}
+
+.bike-wrap.is-poster .bike-poster {
+  opacity: 1;
 }
 
 .rim-type {
@@ -373,6 +387,10 @@ body {
   padding: 0 4.5vw 4.5vh 6vw;
 }
 
+.hero-foot-spacer {
+  width: 3rem;
+}
+
 .hero-count {
   font-size: clamp(1.8rem, 3vw, 2.6rem);
   font-weight: 300;
@@ -452,11 +470,9 @@ body {
   .hero-title {
     top: 15vh;
   }
-  .bike-wrap {
-    --bike-width: 104vw;
-    left: 50%;
-    top: 58%;
-    margin-left: calc(var(--bike-width) / -2);
+  .bike-poster {
+    width: 96vw;
+    transform: translate(-50%, -40%);
   }
   .hero-card {
     bottom: 13vh;
