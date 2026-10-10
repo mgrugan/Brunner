@@ -6,7 +6,7 @@ import pandas as pd
 import statsmodels.formula.api as smf
 from sklearn.base import clone
 
-from commute import descriptive, figures, inference, models
+from commute import assistant, descriptive, figures, inference, models
 from commute.config import (
     FEATURE_LABELS,
     MODEL_FEATURES,
@@ -189,6 +189,8 @@ def run(cv_repeats: int = 5, bootstrap_reps: int = 300, conformal_reps: int = 60
     RESULTS_JSON.write_text(json.dumps({k: v for k, v in results.items() if k not in ("trips", "planner")}, indent=2))
     SITE_DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
     SITE_DATA_FILE.write_text("window.COMMUTE = " + json.dumps(results, separators=(",", ":")) + ";\n")
+
+    assistant.write_context(df, results)
 
     print("rendering figures")
     figures.render_all(df, results)

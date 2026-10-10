@@ -994,3 +994,242 @@ body {
     animation: none;
   }
 }
+
+.ask-root {
+  position: fixed;
+  right: 1.5rem;
+  bottom: 1.5rem;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.9rem;
+  font-family: "Jost", "Futura", sans-serif;
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+.ask-root.is-hidden {
+  opacity: 0;
+  transform: translateY(16px);
+  pointer-events: none;
+}
+
+.ask-launcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9999px;
+  background: #0b1416;
+  padding: 0.75rem 1.2rem;
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: var(--ink);
+  box-shadow: 0 18px 40px -16px rgba(0, 0, 0, 0.9);
+  transition: color 0.3s, transform 0.3s;
+}
+
+.ask-launcher svg {
+  color: var(--orange);
+}
+
+.ask-launcher:hover {
+  transform: translateY(-2px);
+}
+
+.ask-panel-wrap {
+  width: min(400px, calc(100vw - 2rem));
+  animation: ask-in 0.35s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+@keyframes ask-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+.ask-panel {
+  display: flex;
+  flex-direction: column;
+  height: min(560px, calc(100vh - 8rem));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  background:
+    radial-gradient(ellipse 90% 50% at 100% 0%, rgba(2, 42, 52, 0.75), transparent 70%),
+    #080e10;
+  overflow: hidden;
+  box-shadow: 0 40px 80px -30px rgba(0, 0, 0, 0.95);
+}
+
+.ask-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.ask-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.ask-title p {
+  font-size: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.ask-title span {
+  display: block;
+  margin-top: 0.1rem;
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+
+.ask-close {
+  font-size: 1.6rem;
+  font-weight: 200;
+  line-height: 1;
+  color: var(--muted);
+  transition: color 0.2s;
+}
+
+.ask-close:hover {
+  color: var(--ink);
+}
+
+.ask-body {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  padding: 1.1rem;
+  scrollbar-width: thin;
+}
+
+.ask-intro p {
+  font-size: 0.92rem;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.ask-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-top: 1rem;
+}
+
+.ask-suggestions button {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 0.65rem 0.8rem;
+  text-align: left;
+  font-size: 0.86rem;
+  color: var(--ink);
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.ask-suggestions button:hover {
+  border-color: rgba(242, 123, 56, 0.5);
+  background: rgba(242, 123, 56, 0.06);
+}
+
+.ask-message {
+  max-width: 88%;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.ask-user {
+  align-self: flex-end;
+  border-radius: 12px 12px 3px 12px;
+  background: #022a34;
+  padding: 0.6rem 0.85rem;
+  color: var(--ink);
+}
+
+.ask-assistant {
+  align-self: flex-start;
+  color: #d9dcd9;
+}
+
+.ask-error {
+  align-self: flex-start;
+  border-left: 1px solid var(--orange);
+  padding-left: 0.75rem;
+  color: var(--peach);
+}
+
+.ask-thinking {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.ask-thinking-label {
+  animation: ask-fade 0.4s ease;
+}
+
+@keyframes ask-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.ask-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  margin: 0 0.9rem 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  background: rgba(5, 6, 7, 0.7);
+  padding: 0.45rem 0.45rem 0.45rem 0.8rem;
+}
+
+.ask-form textarea {
+  flex: 1;
+  resize: none;
+  max-height: 7rem;
+  background: transparent;
+  padding: 0.35rem 0;
+  font-size: 0.9rem;
+  color: var(--ink);
+  outline: none;
+}
+
+.ask-form textarea::placeholder {
+  color: #5d6669;
+}
+
+.ask-send {
+  display: grid;
+  place-items: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 8px;
+  background: var(--orange);
+  color: var(--black);
+  transition: opacity 0.2s;
+}
+
+.ask-send:disabled {
+  opacity: 0.35;
+}
+
+@media (max-width: 640px) {
+  .ask-root {
+    right: 1rem;
+    bottom: 1rem;
+  }
+}

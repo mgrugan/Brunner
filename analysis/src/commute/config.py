@@ -8,6 +8,7 @@ REPORTS_DIR = PROJECT_ROOT / "reports"
 FIGURES_DIR = REPORTS_DIR / "figures"
 SITE_DATA_FILE = PROJECT_ROOT / "docs" / "data" / "analysis.js"
 RESULTS_JSON = REPORTS_DIR / "results.json"
+ASSISTANT_CONTEXT_FILE = PROJECT_ROOT / "api" / "_context.js"
 
 RANDOM_STATE = 2026
 PRIMARY_ROUTE = "A"
