@@ -13,7 +13,7 @@
 
 ## Deliverables
 
-| | |
+| Deliverable | Where to find it |
 |---|---|
 | **Written analysis** | [`reports/FINDINGS.md`](reports/FINDINGS.md) answers every question in the brief |
 | **Interactive story** | [`docs/index.html`](docs/index.html), a Tailwind + D3 site with a live ride planner |
