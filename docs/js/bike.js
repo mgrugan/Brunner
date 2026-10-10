@@ -226,6 +226,64 @@ function ringGeometry(outer, inner, depth, segments = 160) {
   return geometry;
 }
 
+function rimDecalTexture() {
+  const size = 1024;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  const centre = size / 2;
+  const outer = centre;
+  const inner = outer * (0.765 / 0.918);
+  const mid = (outer + inner) / 2;
+
+  ctx.translate(centre, centre);
+  ctx.strokeStyle = "rgba(242,123,56,0.95)";
+  ctx.lineWidth = 7;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.arc(0, 0, mid, Math.PI * 0.62, Math.PI * 0.88);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0, 0, mid, Math.PI * 1.62, Math.PI * 1.88);
+  ctx.stroke();
+
+  ctx.fillStyle = "rgba(236,233,228,0.92)";
+  ctx.font = "500 46px Jost, Futura, 'Helvetica Neue', Arial, sans-serif";
+  ctx.textBaseline = "middle";
+  const word = "BRUNNER";
+  const spacing = 0.085;
+  [Math.PI * 1.25, Math.PI * 0.25].forEach((start) => {
+    for (let i = 0; i < word.length; i++) {
+      const angle = start - ((word.length - 1) / 2 - i) * spacing;
+      ctx.save();
+      ctx.rotate(angle);
+      ctx.translate(0, -mid);
+      ctx.textAlign = "center";
+      ctx.fillText(word[i], 0, 0);
+      ctx.restore();
+    }
+  });
+
+  ctx.strokeStyle = "rgba(236,233,228,0.35)";
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 48; i++) {
+    const angle = (i / 48) * Math.PI * 2;
+    if (i % 12 > 3 && i % 12 < 9) continue;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(angle) * (inner + 6), Math.sin(angle) * (inner + 6));
+    ctx.lineTo(Math.cos(angle) * (inner + 16), Math.sin(angle) * (inner + 16));
+    ctx.stroke();
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 8;
+  return texture;
+}
+
+let sharedDecal = null;
+
 function buildWheel(R, withCassette) {
   const wheel = new THREE.Group();
 
@@ -236,6 +294,22 @@ function buildWheel(R, withCassette) {
     stripe.position.z = side * R * 0.036;
     wheel.add(stripe);
   });
+
+  sharedDecal = sharedDecal || rimDecalTexture();
+  const decalMaterial = new THREE.MeshStandardMaterial({ map: sharedDecal, transparent: true, roughness: 0.55, metalness: 0, depthWrite: false });
+  [-1, 1].forEach((side) => {
+    const decal = new THREE.Mesh(new THREE.RingGeometry(R * 0.765, R * 0.918, 160, 1), decalMaterial);
+    decal.position.z = side * R * 0.0375;
+    if (side < 0) decal.rotation.y = Math.PI;
+    wheel.add(decal);
+  });
+
+  const valve = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.009, R * 0.009, R * 0.09, 12), WHEEL_MATERIALS.steel);
+  valve.position.y = R * 0.72;
+  wheel.add(valve);
+  const valveCap = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.012, R * 0.012, R * 0.03, 12), WHEEL_MATERIALS.accent);
+  valveCap.position.y = R * 0.67;
+  wheel.add(valveCap);
 
   const spokeCount = 24;
   const spokes = new THREE.InstancedMesh(new THREE.CylinderGeometry(R * 0.0035, R * 0.0035, 1, 6), WHEEL_MATERIALS.spoke, spokeCount);

@@ -168,28 +168,8 @@ function Panel({ onClose }) {
   );
 }
 
-function useScrolledPastHero() {
-  const [past, setPast] = useState(false);
-  useEffect(() => {
-    const hero = document.getElementById("hero");
-    const update = () => {
-      const threshold = hero ? hero.offsetHeight - window.innerHeight * 1.2 : window.innerHeight * 0.6;
-      setPast(window.scrollY > threshold);
-    };
-    update();
-    window.addEventListener("scroll", update, { passive: true });
-    window.addEventListener("resize", update);
-    return () => {
-      window.removeEventListener("scroll", update);
-      window.removeEventListener("resize", update);
-    };
-  }, []);
-  return past;
-}
-
 function AskWidget() {
   const [open, setOpen] = useState(false);
-  const visible = useScrolledPastHero() || open;
 
   useEffect(() => {
     const onKey = (event) => {
@@ -201,7 +181,7 @@ function AskWidget() {
 
   return h(
     "div",
-    { className: `ask-root${visible ? "" : " is-hidden"}` },
+    { className: "ask-root" },
     open && h("div", { className: "ask-panel-wrap" }, h(Panel, { onClose: () => setOpen(false) })),
     h(
       "div",

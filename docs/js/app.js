@@ -423,7 +423,9 @@ function bindScroll() {
   const topbar = document.getElementById("topbar");
   const links = [...document.querySelectorAll(".nav-link")];
   const sections = links.map((link) => document.querySelector(link.getAttribute("href")));
+  const brandWheel = document.querySelector(".brand-wheel");
   const onScroll = () => {
+    if (brandWheel) brandWheel.style.transform = `rotate(${(window.scrollY * 0.35).toFixed(1)}deg)`;
     const max = document.documentElement.scrollHeight - window.innerHeight;
     bar.style.width = `${(window.scrollY / max) * 100}%`;
     topbar.classList.toggle("scrolled", window.scrollY > 24);
