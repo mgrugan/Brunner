@@ -139,12 +139,13 @@
     <button id="menu-close" class="absolute right-6 top-6 text-3xl font-extralight text-brand-ink sm:right-10" aria-label="Close menu">&times;</button>
     <nav class="flex h-full flex-col justify-center gap-2 px-8 sm:px-20">
       <a class="menu-link" href="#summary"><span>/00</span>Short version</a>
-      <a class="menu-link" href="#direction"><span>/01</span>Direction &amp; wind</a>
-      <a class="menu-link" href="#fitness"><span>/02</span>Fitness &amp; cold</a>
-      <a class="menu-link" href="#years"><span>/03</span>Over time</a>
-      <a class="menu-link" href="#models"><span>/04</span>Models</a>
-      <a class="menu-link" href="#planner"><span>/05</span>Planner</a>
-      <a class="menu-link" href="#implications"><span>/06</span>Takeaways</a>
+      <a class="menu-link" href="#direction"><span>/01</span>Direction</a>
+      <a class="menu-link" href="#weather"><span>/02</span>Wind &amp; weather</a>
+      <a class="menu-link" href="#fitness"><span>/03</span>Fitness &amp; cold</a>
+      <a class="menu-link" href="#years"><span>/04</span>Over time</a>
+      <a class="menu-link" href="#models"><span>/05</span>Models</a>
+      <a class="menu-link" href="#planner"><span>/06</span>Planner</a>
+      <a class="menu-link" href="#implications"><span>/07</span>Takeaways</a>
     </nav>
   </div>
 
@@ -213,28 +214,48 @@
 
     <section id="direction" class="section">
       <div class="section-head">
-        <p class="eyebrow"><span>/01</span>Direction &amp; wind</p>
-        <h2 class="section-title">Home is six minutes slower, and the wind isn't why</h2>
+        <p class="eyebrow"><span>/01</span>Direction</p>
+        <h2 class="section-title">Home is six minutes slower, every time</h2>
         <p class="section-lede" id="direction-lede"></p>
+      </div>
+      <div class="card mt-10">
+        <h3 class="chart-title">Same day, same route</h3>
+        <p class="chart-sub">Each line joins a morning ride to that evening's return.</p>
+        <div id="slope" class="chart h-[360px]"></div>
+      </div>
+    </section>
+
+    <section id="weather" class="section">
+      <div class="section-head">
+        <p class="eyebrow"><span>/02</span>Wind &amp; weather</p>
+        <h2 class="section-title">The wind costs seconds, but it isn't why home is slower</h2>
+        <p class="section-lede" id="weather-lede"></p>
       </div>
       <div class="mt-10 grid gap-6 lg:grid-cols-5">
         <div class="card lg:col-span-2">
-          <h3 class="chart-title">Same day, same route</h3>
-          <p class="chart-sub">Each line joins a morning ride to that evening's return.</p>
-          <div id="slope" class="chart h-[360px]"></div>
+          <h3 class="chart-title">Which way is the commute?</h3>
+          <p class="chart-sub">Out-of-sample fit for every possible route bearing. The orange arrow is the direction of the ride to work that best predicts held-out trips.</p>
+          <div id="wind-compass" class="chart h-[340px]"></div>
         </div>
         <div class="card lg:col-span-3">
-          <h3 class="chart-title">Headwind costs time</h3>
-          <p class="chart-sub">Seconds faster or slower than expected, against the headwind on that ride. Below zero is a tailwind.</p>
+          <h3 class="chart-title">Headwind vs. trip time</h3>
+          <p class="chart-sub">Seconds faster or slower than expected after direction, temperature and fitness, against the headwind on that ride. Negative headwind is a tailwind.</p>
           <div class="legend mt-3"><span class="key sky"></span>To work <span class="key orange ml-4"></span>To home</div>
-          <div id="wind-scatter" class="chart h-[310px]"></div>
+          <div id="wind-scatter" class="chart h-[300px]"></div>
         </div>
       </div>
+      <div id="weather-tiles" class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4"></div>
+      <div class="card mt-6">
+        <h3 class="chart-title">What each piece adds to prediction</h3>
+        <p class="chart-sub">Out-of-sample R² on held-out ride days as each factor joins the model. A bar that barely moves means that factor doesn't help predict new trips.</p>
+        <div id="ablation" class="chart h-[300px]"></div>
+      </div>
+      <div class="callout mt-6" id="weather-callout"></div>
     </section>
 
     <section id="fitness" class="section">
       <div class="section-head">
-        <p class="eyebrow"><span>/02</span>Fitness &amp; cold</p>
+        <p class="eyebrow"><span>/03</span>Fitness &amp; cold</p>
         <h2 class="section-title">Fitness sets the pace. Cold gets the blame.</h2>
         <p class="section-lede" id="fitness-lede"></p>
       </div>
@@ -255,7 +276,7 @@
 
     <section id="years" class="section">
       <div class="section-head">
-        <p class="eyebrow"><span>/03</span>Over time</p>
+        <p class="eyebrow"><span>/04</span>Over time</p>
         <h2 class="section-title">Not slowing down. Riding less.</h2>
         <p class="section-lede" id="years-lede"></p>
       </div>
@@ -274,7 +295,7 @@
 
     <section id="models" class="section">
       <div class="section-head">
-        <p class="eyebrow"><span>/04</span>Models</p>
+        <p class="eyebrow"><span>/05</span>Models</p>
         <h2 class="section-title">Seven models agree: the pattern is simple</h2>
         <p class="section-lede" id="models-lede"></p>
       </div>
@@ -287,7 +308,7 @@
 
     <section id="planner" class="section">
       <div class="section-head">
-        <p class="eyebrow"><span>/05</span>Planner</p>
+        <p class="eyebrow"><span>/06</span>Planner</p>
         <h2 class="section-title">A leave-by time, 9 trips in 10</h2>
         <p class="section-lede" id="planner-lede"></p>
       </div>
@@ -339,7 +360,7 @@
 
     <section id="implications" class="section pb-24">
       <div class="section-head">
-        <p class="eyebrow"><span>/06</span>Takeaways</p>
+        <p class="eyebrow"><span>/07</span>Takeaways</p>
         <h2 class="section-title">What to do with it</h2>
       </div>
       <div id="implication-list" class="mt-10 grid gap-x-10 md:grid-cols-2"></div>
