@@ -4,7 +4,7 @@
 
 > 143 trips · 77 ride days · 1,060 miles · 85.9 hours in the saddle
 
-Every number in this report comes from the reproducible pipeline in [`analysis/`](../analysis) (`python -m commute`). The full machine-readable output is in [`results.json`](results.json), and the interactive version of this story is in [`docs/index.html`](../docs/index.html).
+Every number in this report comes from the reproducible pipeline in [`analysis/`](../analysis) (`python analysis/commute_analysis.py`). The full machine-readable output is in [`results.json`](results.json), and the interactive version of this story is in [`docs/index.html`](../docs/index.html).
 
 ---
 
@@ -246,13 +246,13 @@ This powers the **ride planner** on the website. Choose a direction, temperature
 
 ```bash
 cd analysis
-pip install -e ".[dev]"
-python -m commute
-pytest
+pip install -r requirements.txt
+python commute_analysis.py
+python -m pytest tests
 ```
 
 Outputs:
 - `reports/results.json`: every statistic in this report
 - `reports/figures/*.png`: static figures
 - `docs/data/analysis.js`: data feed for the interactive site
-- `analysis/data/processed/trips_features.csv`: the engineered feature table
+- `analysis/data/trips_features.csv`: the engineered feature table
