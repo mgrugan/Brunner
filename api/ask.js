@@ -1,7 +1,7 @@
 import { DATASET_CONTEXT } from "./_context.js";
 
 const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-const DEFAULT_MODEL = "gemini-2.5-flash";
+const FALLBACK_MODELS = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash"];
 const MAX_QUESTION_CHARS = 600;
 const MAX_HISTORY_TURNS = 6;
 
@@ -77,31 +77,55 @@ export async function POST(request) {
     { role: "user", content: question },
   ];
 
+  const models = [...new Set([process.env.ASK_MODEL, ...FALLBACK_MODELS].filter(Boolean))];
+  let lastFailure = null;
   try {
-    const response = await fetch(GEMINI_URL, {
-      method: "POST",
-      headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
-      body: JSON.stringify({
-        model: process.env.ASK_MODEL || DEFAULT_MODEL,
-        messages,
-        max_tokens: 1200,
-        reasoning_effort: "low",
-        temperature: 0.2,
-      }),
-    });
-    if (!response.ok) {
-      const detail = await response.text();
-      console.error("gemini error", response.status, detail.slice(0, 500));
-      return json({ error: "The assistant is unavailable right now. Try again in a moment." }, 502);
+    for (const model of models) {
+      for (const withReasoning of [true, false]) {
+        const result = await callGemini(apiKey, model, messages, withReasoning);
+        if (result.answer) return json({ answer: result.answer });
+        lastFailure = result;
+        console.error("gemini error", model, withReasoning, result.status, result.detail);
+        if (result.status === 400 && withReasoning) continue;
+        break;
+      }
+      if (lastFailure && ([401, 403, 429].includes(lastFailure.status) || /api key/i.test(lastFailure.detail || ""))) break;
     }
-    const data = await response.json();
-    const answer = data?.choices?.[0]?.message?.content?.trim();
-    if (!answer) return json({ error: "No answer came back. Try rephrasing the question." }, 502);
-    return json({ answer });
   } catch (error) {
     console.error("ask failed", error);
-    return json({ error: "The assistant is unavailable right now. Try again in a moment." }, 502);
+    return json({ error: "Couldn't reach the language model. Try again in a moment." }, 502);
   }
+  return json({ error: describeFailure(lastFailure) }, 502);
+}
+
+async function callGemini(apiKey, model, messages, withReasoning) {
+  const body = { model, messages, max_tokens: 1200, temperature: 0.2 };
+  if (withReasoning) body.reasoning_effort = "low";
+  const response = await fetch(GEMINI_URL, {
+    method: "POST",
+    headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    let detail = text.slice(0, 300);
+    try {
+      const parsed = JSON.parse(text);
+      const first = Array.isArray(parsed) ? parsed[0] : parsed;
+      detail = first?.error?.message || detail;
+    } catch {}
+    return { status: response.status, detail };
+  }
+  const data = await response.json();
+  const answer = data?.choices?.[0]?.message?.content?.trim();
+  return answer ? { answer } : { status: 502, detail: "Empty response from the model." };
+}
+
+function describeFailure(failure) {
+  if (!failure) return "The assistant is unavailable right now. Try again in a moment.";
+  if (failure.status === 401 || failure.status === 403 || /api key/i.test(failure.detail || "")) return `The Gemini API key was rejected (${failure.status}): ${failure.detail}`;
+  if (failure.status === 429) return `Gemini rate limit or quota reached (429): ${failure.detail}`;
+  return `Gemini returned ${failure.status}: ${failure.detail}`;
 }
 
 export function GET(request) {
