@@ -1245,6 +1245,114 @@ def _season_learning_curve(df: pd.DataFrame) -> dict:
     return {"points": _records(points.round(3)), "buckets": _records(summary.round(3))}
 
 
+def _section(title: str) -> None:
+    print(f"\n{title.upper()}\n{'-' * len(title)}")
+
+
+def _clock_text(minutes: float) -> str:
+    total = round(minutes * 60)
+    return f"{total // 60}:{abs(total) % 60:02d}"
+
+
+def print_report(results: dict) -> None:
+    overview = results["overview"]
+    headline = overview["headline"]
+    inference = results["inference"]
+    modelling = results["modelling"]
+    coefficients = {row["term"]: row for row in inference["ols"]["coefficients"]}
+
+    _section("Data")
+    print(f"trips: {headline['trips']}  ride days: {headline['ride_days']}  seasons: {headline['seasons']}  ({headline['first_ride']} to {headline['last_ride']})")
+    print(f"miles: {headline['total_miles']}  hours: {headline['total_hours']}  mean trip: {_clock_text(headline['mean_minutes'])}  mean speed: {headline['mean_mph']} mph")
+    print(f"route A share: {headline['share_primary_route']:.0%}  temperature range: {headline['temperature_range'][0]}-{headline['temperature_range'][1]} F")
+    for row in overview["by_destination"]:
+        print(f"  to {row['destination'].lower():<5} mean {_clock_text(row['mean_minutes'])}  median {_clock_text(row['median_minutes'])}  {row['mean_mph']:.2f} mph  n={int(row['trips'])}")
+
+    _section("Direction: paired same-day test (route A both ways)")
+    gap = inference["direction_gap"]
+    print(f"paired days: {gap['n_pairs']}  home slower on {overview['paired']['share_home_slower']:.0%} of them")
+    print(f"mean gap {gap['mean_gap']:.2f} min  median gap {gap['median_gap']:.2f} min  95% bootstrap CI {gap['median_gap_ci'][0]:.2f}-{gap['median_gap_ci'][1]:.2f}")
+    print(f"paired t = {gap['t_statistic']}  p = {gap['t_p_value']:.1e}   Wilcoxon p = {gap['wilcoxon_p_value']:.1e}   Cohen's dz = {gap['cohens_dz']}")
+    print(f"mixed model day-level ICC = {inference['mixed_model']['icc']}   same-day residual r = {inference['same_day_residuals']['r']} (p = {inference['same_day_residuals']['p_value']:.3f})")
+
+    _section("Adjusted regression (OLS, robust SE)")
+    print(f"R2 = {inference['ols']['r_squared']}  adj R2 = {inference['ols']['adj_r_squared']}  residual SD = {inference['ols']['residual_sd'] * 60:.0f} s")
+    for term, label, scale, unit in [
+        ("is_home", "home vs work", 1, "min"),
+        ("season_ride_number", "per ride in season", 60, "s"),
+        ("log_days_since_last_ride", "per log-day off", 60, "s"),
+        ("years_elapsed", "per year", 60, "s"),
+        ("C(route, Treatment('A'))[T.D]", "route D vs A", 60, "s"),
+        ("C(route, Treatment('A'))[T.B]", "route B vs A", 1, "min"),
+    ]:
+        row = coefficients[term]
+        print(f"  {label:<22} {row['estimate'] * scale:+8.2f} {unit}  95% CI {row['ci_low'] * scale:+.2f} to {row['ci_high'] * scale:+.2f}  p = {row['p_value']:.1e}")
+    optimum = inference["temperature_optimum"]
+    print(f"  quadratic temperature optimum {optimum['optimum_f']} F (90% CI {optimum['optimum_ci'][0]}-{optimum['optimum_ci'][1]})")
+
+    _section("Confounding: cold-morning penalty (work trips, 35 F vs 65 F)")
+    cold = inference["cold_penalty"]
+    for step in cold["steps"]:
+        print(f"  {step['model']:<28} {step['penalty_minutes'] * 60:6.0f} s  90% CI {step['ci_low'] * 60:.0f}-{step['ci_high'] * 60:.0f}  R2 {step['r_squared']}")
+    print(f"share of raw penalty explained by fitness and calendar: {cold['share_explained_by_fitness']:.0%}")
+    print(f"Spearman rho: temperature vs ride number {cold['spearman_temp_ride']}, vs day of year {cold['spearman_temp_doy']}")
+
+    _section("Fitness curve (adjusted seconds by ride number)")
+    for bucket in results["interpretation"]["season_learning"]["buckets"]:
+        print(f"  around ride {bucket['ride']:5.1f}: {bucket['adjusted'] * 60:+5.0f} s  (n={bucket['n']})")
+
+    _section("Trend over seasons")
+    trend = inference["trend"]
+    print(f"naive trend {trend['naive_years_coef_seconds']:+} s/yr (p = {trend['naive_years_p']:.3f})   fitness-adjusted {trend['adjusted_years_coef_seconds']:+} s/yr (p = {trend['adjusted_years_p']:.3f})")
+    print(f"Theil-Sen {trend['theil_sen_seconds_per_year']:+} s/yr  Kendall tau {trend['kendall_tau']} (p = {trend['kendall_p']:.3f})")
+    print("  season  trips  vs 2019 (dir+temp)  vs 2019 (+fitness)")
+    trips_by_season = {row["season"]: row["trips"] for row in overview["frequency"]}
+    for plain, adjusted in zip(trend["season_effects"], trend["season_effects_fitness_adjusted"]):
+        print(f"  {plain['season']}    {trips_by_season[plain['season']]:>4}   {plain['estimate'] * 60:+8.0f} s           {adjusted['estimate'] * 60:+8.0f} s")
+
+    _section("Routes (to work)")
+    routes = inference["routes"]
+    print(f"route D {_clock_text(routes['work_route_d_mean'])} (n={routes['work_route_d_n']}) vs route A {_clock_text(routes['work_route_a_mean'])}  Mann-Whitney p = {routes['mann_whitney_p']:.3f}")
+    print(f"same autumn-2019 window: A {_clock_text(routes['autumn_2019_route_a_mean'])} vs D {_clock_text(routes['autumn_2019_route_d_mean'])}  p = {routes['autumn_2019_mann_whitney_p']:.2f}")
+    print(f"weekday effect: Kruskal-Wallis p = {inference['weekday']['p_value']:.2f}")
+
+    weather = results.get("weather")
+    if weather:
+        _section("Weather and wind (Open-Meteo hourly, central Pittsburgh)")
+        print(f"departure-hour match: median temperature gap {weather['temperature_match_error_median']} F, correlation {weather['temperature_match_correlation']}")
+        print(f"inferred bearing of ride to work: {weather['work_bearing_deg']:.0f} deg (90% CI {weather['work_bearing_ci'][0]}-{weather['work_bearing_ci'][1]})")
+        print(f"headwind cost: {weather['headwind_seconds_per_mph']} s per mph (90% CI {weather['headwind_seconds_ci'][0]}-{weather['headwind_seconds_ci'][1]}), p = {weather['headwind_p_value']:.1e}")
+        print(f"R2 without wind {weather['r_squared_without_wind']} -> with wind {weather['r_squared_with_wind']}   residual SD {weather['residual_sd_without_wind_s']} s -> {weather['residual_sd_with_wind_s']} s")
+        print(f"home penalty without wind {weather['home_penalty_without_wind']} min -> with wind {weather['home_penalty_with_wind']} min")
+        for destination, row in weather["by_direction"].items():
+            print(f"  to {destination.lower():<5} wind {row['mean_wind_mph']} mph from {row['wind_from_deg']:.0f} deg, mean headwind {row['mean_headwind_mph']:+} mph")
+        for term, row in weather["other_weather"].items():
+            print(f"  {term:<22} coef {row['estimate']:+.4f}  p = {row['p_value']:.3f}")
+
+    _section("Models (5 folds x 5 repeats, grouped by ride day)")
+    print(f"  {'model':<30} {'RMSE':>6} {'MAE':>6} {'R2':>6}")
+    for row in modelling["cv"]:
+        print(f"  {row['model']:<30} {row['rmse_mean'] * 60:5.0f}s {row['mae_mean'] * 60:5.0f}s {row['r2_mean']:6.3f}")
+    print("forward validation, MAE by season (s):")
+    forward = pd.DataFrame(modelling["forward"]).pivot(index="model", columns="season", values="mae") * 60
+    print(forward.round(0).astype(int).to_string())
+    conformal = modelling["conformal"]
+    print(f"conformal 90% interval: +/-{modelling['conformal']['cv_plus_half_width'] * 60:.0f} s, empirical coverage {conformal['empirical_coverage']:.0%}")
+
+    _section("Feature importance")
+    print("  SHAP mean |contribution| (LightGBM):")
+    for row in results["interpretation"]["shap"]["importance"]:
+        print(f"    {row['label']:<28} {row['mean_abs_shap'] * 60:6.1f} s")
+    print("  Gaussian process ARD relevance:")
+    for row in results["interpretation"]["gp_relevance"]:
+        if row["relevance"] is not None:
+            print(f"    {row['label']:<28} {row['relevance']:.2f}")
+
+    _section("Largest surprises (out-of-fold residuals)")
+    for row in modelling["anomalies"][:5]:
+        print(f"  {row['date']} to {row['destination'].lower():<5} route {row['route']}  actual {_clock_text(row['minutes'])}  expected {_clock_text(row['predicted'])}  {row['residual'] * 60:+.0f} s")
+
+
 def run(cv_repeats: int = 5, bootstrap_reps: int = 300, conformal_reps: int = 60) -> dict:
     started = time.time()
     df = load_trips()
@@ -1363,9 +1471,15 @@ def run(cv_repeats: int = 5, bootstrap_reps: int = 300, conformal_reps: int = 60
     SITE_DATA_FILE.write_text("window.COMMUTE = " + json.dumps(results, separators=(",", ":")) + ";\n")
 
     write_context(df, results)
+    print_report(results)
 
     print(f"done in {time.time() - started:.0f}s")
     return results
+
+
+def report_from_site_data() -> None:
+    text = SITE_DATA_FILE.read_text()
+    print_report(json.loads(text[text.index("{") : text.rstrip().rstrip(";").rindex("}") + 1]))
 
 
 def main() -> None:
@@ -1373,7 +1487,11 @@ def main() -> None:
     parser.add_argument("--cv-repeats", type=int, default=5)
     parser.add_argument("--bootstrap-reps", type=int, default=300)
     parser.add_argument("--conformal-reps", type=int, default=60)
+    parser.add_argument("--report", action="store_true", help="print the results of the last run without recomputing")
     args = parser.parse_args()
+    if args.report:
+        report_from_site_data()
+        return
     run(cv_repeats=args.cv_repeats, bootstrap_reps=args.bootstrap_reps, conformal_reps=args.conformal_reps)
 
 
