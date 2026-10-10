@@ -188,9 +188,6 @@ function fillImplications() {
   d3.select("#implication-list").selectAll("div").data(items).join("div").attr("class", "implication reveal")
     .html(([title, body], i) =>
       `<div class="implication-index">${String(i + 1).padStart(2, "0")}</div><div><h3 class="font-display text-lg font-semibold">${title}</h3><p class="mt-2 text-sm leading-relaxed text-brand-muted">${body}</p></div>`);
-  d3.select("#caveat").text(
-    "Based on 143 trips. Weather is hourly reanalysis for central Pittsburgh (Open-Meteo), matched to each ride by its recorded temperature, so departure hours are estimates. Elevation and traffic weren't recorded, and the models section uses the original log only. Results are associations, not experiments."
-  );
   d3.select("#generated").text(`Analysis run ${D.generated}`);
 }
 
