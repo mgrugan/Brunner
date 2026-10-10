@@ -1,7 +1,7 @@
 import { DATASET_CONTEXT } from "./_context.js";
 
-const GATEWAY_URL = "https://ai-gateway.vercel.sh/v1/chat/completions";
-const DEFAULT_MODEL = "openai/gpt-4o-mini";
+const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+const DEFAULT_MODEL = "gemini-2.5-flash";
 const MAX_QUESTION_CHARS = 600;
 const MAX_HISTORY_TURNS = 6;
 
@@ -34,7 +34,7 @@ function sanitizeHistory(history) {
 }
 
 export async function POST(request) {
-  const apiKey = process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN;
+  const apiKey = process.env.GEMINI_API_KEY || process.env.AI_GATEWAY_API_KEY;
   if (!apiKey) {
     return json({ error: "The assistant is not configured on this deployment." }, 503);
   }
@@ -57,19 +57,20 @@ export async function POST(request) {
   ];
 
   try {
-    const response = await fetch(GATEWAY_URL, {
+    const response = await fetch(GEMINI_URL, {
       method: "POST",
       headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
       body: JSON.stringify({
         model: process.env.ASK_MODEL || DEFAULT_MODEL,
         messages,
-        max_tokens: 450,
+        max_tokens: 1200,
+        reasoning_effort: "low",
         temperature: 0.2,
       }),
     });
     if (!response.ok) {
       const detail = await response.text();
-      console.error("gateway error", response.status, detail.slice(0, 500));
+      console.error("gemini error", response.status, detail.slice(0, 500));
       return json({ error: "The assistant is unavailable right now. Try again in a moment." }, 502);
     }
     const data = await response.json();

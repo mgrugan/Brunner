@@ -3,7 +3,7 @@ import { GLTFLoader } from "https://esm.sh/three@0.169.0/examples/jsm/loaders/GL
 import { RoomEnvironment } from "https://esm.sh/three@0.169.0/examples/jsm/environments/RoomEnvironment.js";
 
 const MODEL_URL = "assets/bike.glb";
-const FACING = 1;
+const FACING = -1;
 const BIKE_LENGTH = 4;
 const IDLE_YAW = -0.42;
 const EXIT_YAW = 0;
@@ -95,6 +95,7 @@ function normaliseModel(root) {
     const materials = Array.isArray(node.material) ? node.material : [node.material];
     materials.forEach((material) => {
       if ("envMapIntensity" in material) material.envMapIntensity = 0.9;
+      if (material.emissiveMap) material.emissiveIntensity = 0.12;
       if (material.map) material.map.anisotropy = 8;
     });
   });
@@ -135,7 +136,7 @@ function init() {
 
   let bike = null;
   let loadedAt = 0;
-  const cameraTarget = new THREE.Vector3(0, 0.95, 0);
+  const cameraTarget = new THREE.Vector3(0, 1.2, 0);
 
   function resize() {
     const width = container.clientWidth;
@@ -144,7 +145,7 @@ function init() {
     camera.aspect = width / height;
     const narrow = camera.aspect < 0.9;
     camera.fov = narrow ? 42 : 28;
-    camera.position.set(0, narrow ? 1.6 : 1.55, narrow ? 9.5 : 9.2);
+    camera.position.set(0, narrow ? 1.6 : 1.55, narrow ? 11.5 : 9.2);
     camera.lookAt(cameraTarget);
     camera.updateProjectionMatrix();
   }
