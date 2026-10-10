@@ -1,7 +1,20 @@
 import { DATASET_CONTEXT } from "./_context.js";
 
 const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-const FALLBACK_MODELS = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash"];
+const FALLBACK_MODELS = [
+  "gemini-flash-latest",
+  "gemini-3.8-flash",
+  "gemini-3-flash",
+  "gemini-3-flash-preview",
+  "gemini-flash-lite-latest",
+  "gemini-3.1-flash-lite",
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
+  "gemma-3-27b-it",
+  "gemma-3-12b-it",
+];
+
+let workingModel = null;
 const MAX_QUESTION_CHARS = 600;
 const MAX_HISTORY_TURNS = 6;
 
@@ -77,13 +90,16 @@ export async function POST(request) {
     { role: "user", content: question },
   ];
 
-  const models = [...new Set([process.env.ASK_MODEL, ...FALLBACK_MODELS].filter(Boolean))];
+  const models = [...new Set([workingModel, process.env.ASK_MODEL, ...FALLBACK_MODELS].filter(Boolean))];
   let lastFailure = null;
   try {
     for (const model of models) {
       for (const withReasoning of [true, false]) {
         const result = await callGemini(apiKey, model, messages, withReasoning);
-        if (result.answer) return json({ answer: result.answer });
+        if (result.answer) {
+          workingModel = model;
+          return json({ answer: result.answer });
+        }
         lastFailure = result;
         console.error("gemini error", model, withReasoning, result.status, result.detail);
         if (result.status === 400 && withReasoning) continue;
@@ -99,8 +115,9 @@ export async function POST(request) {
 }
 
 async function callGemini(apiKey, model, messages, withReasoning) {
-  const body = { model, messages, max_tokens: 1200, temperature: 0.2 };
-  if (withReasoning) body.reasoning_effort = "low";
+  const isGemma = model.startsWith("gemma");
+  const body = { model, messages: isGemma ? foldSystemPrompt(messages) : messages, max_tokens: 1200, temperature: 0.2 };
+  if (withReasoning && !isGemma) body.reasoning_effort = "low";
   const response = await fetch(GEMINI_URL, {
     method: "POST",
     headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
@@ -119,6 +136,14 @@ async function callGemini(apiKey, model, messages, withReasoning) {
   const data = await response.json();
   const answer = data?.choices?.[0]?.message?.content?.trim();
   return answer ? { answer } : { status: 502, detail: "Empty response from the model." };
+}
+
+function foldSystemPrompt(messages) {
+  const [system, ...rest] = messages;
+  const firstUser = rest.findIndex((message) => message.role === "user");
+  return rest.map((message, index) =>
+    index === firstUser ? { role: "user", content: `${system.content}\n\nQUESTION\n${message.content}` } : message
+  );
 }
 
 function describeFailure(failure) {
