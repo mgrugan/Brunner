@@ -1,13 +1,14 @@
 const Palette = {
-  deep: "#011c23",
-  navy: "#022a34",
-  panel: "#06323d",
-  line: "#1d4b57",
+  deep: "#070b0c",
+  navy: "#0b1416",
+  panel: "#0b1416",
+  line: "#1f3339",
   orange: "#f27b38",
   peach: "#f6a273",
   sky: "#45b4cf",
-  ink: "#e8eef0",
-  muted: "#8fa7ae",
+  ink: "#ece9e4",
+  muted: "#8b9497",
+  brandNavy: "#022a34",
 };
 
 const DirectionColor = { Work: Palette.sky, Home: Palette.orange };
@@ -111,7 +112,7 @@ const Charts = {
     merge.append("feMergeNode").attr("in", "blur");
     merge.append("feMergeNode").attr("in", "SourceGraphic");
 
-    g.append("circle").attr("r", outer).attr("fill", Palette.deep).attr("stroke", Palette.line).attr("stroke-width", 1);
+    g.append("circle").attr("r", outer).attr("fill", Palette.brandNavy).attr("fill-opacity", 0.35).attr("stroke", Palette.line).attr("stroke-width", 1);
     g.append("path")
       .attr("d", d3.arc()({ innerRadius: outer - 3, outerRadius: outer + 5, startAngle: Math.PI * 0.86, endAngle: Math.PI * 1.98 }))
       .attr("fill", Palette.orange);
@@ -123,7 +124,7 @@ const Charts = {
         .attr("y", -radius(minute) - 3)
         .attr("fill", Palette.muted)
         .attr("font-size", 9.5)
-        .attr("font-family", "JetBrains Mono")
+        .attr("font-family", "Jost")
         .text(`${minute}m`);
     });
 
@@ -147,7 +148,7 @@ const Charts = {
         .attr("dominant-baseline", "middle")
         .attr("fill", Palette.muted)
         .attr("font-size", 10)
-        .attr("font-family", "JetBrains Mono")
+        .attr("font-family", "Jost")
         .text(label);
     });
 
@@ -194,9 +195,9 @@ const Charts = {
       .attr("text-anchor", "middle")
       .attr("y", -6)
       .attr("fill", Palette.ink)
-      .attr("font-family", "Space Grotesk")
-      .attr("font-weight", 700)
-      .attr("font-size", Math.max(size * 0.09, 28))
+      .attr("font-family", "Jost")
+      .attr("font-weight", 200)
+      .attr("font-size", Math.max(size * 0.1, 30))
       .text(trips.length);
     g.append("text")
       .attr("text-anchor", "middle")
@@ -471,7 +472,7 @@ const Charts = {
         .attr("y", top + y.bandwidth() / 2)
         .attr("dominant-baseline", "middle")
         .attr("fill", Palette.ink)
-        .attr("font-family", "JetBrains Mono")
+        .attr("font-family", "Jost")
         .attr("font-size", 11)
         .text(`${Math.round(step.penalty_minutes * 60)}s`);
       g.append("rect")
@@ -568,7 +569,7 @@ const Charts = {
     const x = d3.scaleBand().domain(temperatures).range([0, width]).paddingInner(0.06);
     const y = d3.scaleBand().domain(surface.rides).range([height, 0]).paddingInner(0.06);
     const flat = values.flat();
-    const color = d3.scaleSequential().domain(d3.extent(flat)).interpolator(d3.interpolateRgb(Palette.deep, Palette.orange));
+    const color = d3.scaleSequential().domain(d3.extent(flat)).interpolator(d3.interpolateRgb(Palette.brandNavy, Palette.orange));
     const cells = [];
     surface.rides.forEach((ride, i) => temperatures.forEach((t, j) => cells.push({ ride, t, value: values[i][j] })));
     g.selectAll("rect")
@@ -605,7 +606,7 @@ const Charts = {
     const [lo, hi] = d3.extent(flat);
     legend.html(
       `<div class="flex items-center gap-3 text-xs text-brand-muted"><span class="font-mono">${Format.clock(lo)}</span>` +
-        `<div class="h-2 flex-1 rounded-full" style="background:linear-gradient(90deg,${Palette.deep},${Palette.orange})"></div>` +
+        `<div class="h-2 flex-1 rounded-full" style="background:linear-gradient(90deg,${Palette.brandNavy},${Palette.orange})"></div>` +
         `<span class="font-mono">${Format.clock(hi)}</span></div>`
     );
   },
@@ -647,7 +648,7 @@ const Charts = {
       .attr("y", (d) => y(d.trips) - 7)
       .attr("text-anchor", "middle")
       .attr("fill", Palette.ink)
-      .attr("font-family", "JetBrains Mono")
+      .attr("font-family", "Jost")
       .attr("font-size", 11)
       .text((d) => (d.trips === 0 ? "–" : d.trips));
   },
@@ -744,7 +745,7 @@ const Charts = {
         .attr("dominant-baseline", "middle")
         .attr("fill", Palette.muted)
         .attr("font-size", 11)
-        .attr("font-family", "JetBrains Mono")
+        .attr("font-family", "Jost")
         .text(`n=${rows.length} · ${rows[0].distance_miles}mi`);
     });
   },
@@ -789,7 +790,7 @@ const Charts = {
         .attr("dominant-baseline", "middle")
         .attr("fill", Palette.ink)
         .attr("font-size", 11)
-        .attr("font-family", "JetBrains Mono")
+        .attr("font-family", "Jost")
         .text(`${Math.round(row.rmse_mean * 60)}s · R² ${row.r2_mean.toFixed(2)}`);
       g.append("rect")
         .attr("x", -labelWidth)
@@ -920,7 +921,7 @@ const Charts = {
         .attr("text-anchor", anchor)
         .attr("fill", Palette.muted)
         .attr("font-size", 10.5)
-        .attr("font-family", "JetBrains Mono")
+        .attr("font-family", "Jost")
         .text(`${label} ${Format.clock(value)}`);
     });
   },
