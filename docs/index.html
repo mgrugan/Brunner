@@ -141,12 +141,13 @@
       <a class="menu-link" href="#summary"><span>/00</span>Overview</a>
       <a class="menu-link" href="#direction"><span>/01</span>Direction</a>
       <a class="menu-link" href="#temperature"><span>/02</span>Temperature</a>
-      <a class="menu-link" href="#fitness"><span>/03</span>Fitness</a>
-      <a class="menu-link" href="#years"><span>/04</span>Over time</a>
-      <a class="menu-link" href="#routes"><span>/05</span>Routes</a>
-      <a class="menu-link" href="#models"><span>/06</span>Models</a>
-      <a class="menu-link" href="#planner"><span>/07</span>Planner</a>
-      <a class="menu-link" href="#implications"><span>/08</span>Takeaways</a>
+      <a class="menu-link" href="#weather"><span>/03</span>Wind &amp; weather</a>
+      <a class="menu-link" href="#fitness"><span>/04</span>Fitness</a>
+      <a class="menu-link" href="#years"><span>/05</span>Over time</a>
+      <a class="menu-link" href="#routes"><span>/06</span>Routes</a>
+      <a class="menu-link" href="#models"><span>/07</span>Models</a>
+      <a class="menu-link" href="#planner"><span>/08</span>Planner</a>
+      <a class="menu-link" href="#implications"><span>/09</span>Takeaways</a>
     </nav>
   </div>
 
@@ -276,9 +277,32 @@
       </div>
     </section>
 
+    <section id="weather" class="section">
+      <div class="section-head">
+        <p class="eyebrow"><span>/03</span>Wind &amp; weather</p>
+        <h2 class="section-title">The wind costs seconds, but it isn't why home is slower</h2>
+        <p class="section-lede" id="weather-lede"></p>
+      </div>
+      <div class="mt-10 grid gap-6 lg:grid-cols-5">
+        <div class="card lg:col-span-2">
+          <h3 class="chart-title">Which way is the commute?</h3>
+          <p class="chart-sub">Model fit for every possible route bearing. The arrow marks the direction of the ride to work that best explains the times.</p>
+          <div id="wind-compass" class="chart h-[340px]"></div>
+        </div>
+        <div class="card lg:col-span-3">
+          <h3 class="chart-title">Headwind vs. trip time</h3>
+          <p class="chart-sub">Seconds faster or slower than expected after direction, temperature and fitness, against the headwind on that ride. Negative headwind is a tailwind.</p>
+          <div class="legend mt-3"><span class="key sky"></span>To work <span class="key orange ml-4"></span>To home</div>
+          <div id="wind-scatter" class="chart h-[300px]"></div>
+        </div>
+      </div>
+      <div id="weather-tiles" class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4"></div>
+      <div class="callout mt-6" id="weather-callout"></div>
+    </section>
+
     <section id="fitness" class="section">
       <div class="section-head">
-        <p class="eyebrow"><span>/03</span>Fitness</p>
+        <p class="eyebrow"><span>/04</span>Fitness</p>
         <h2 class="section-title">Each season starts slow, and each ride speeds up the next</h2>
         <p class="section-lede" id="fitness-lede"></p>
       </div>
@@ -304,7 +328,7 @@
 
     <section id="years" class="section">
       <div class="section-head">
-        <p class="eyebrow"><span>/04</span>Over time</p>
+        <p class="eyebrow"><span>/05</span>Over time</p>
         <h2 class="section-title">Not slower, just riding less</h2>
         <p class="section-lede" id="years-lede"></p>
       </div>
@@ -326,7 +350,7 @@
 
     <section id="routes" class="section">
       <div class="section-head">
-        <p class="eyebrow"><span>/05</span>Routes</p>
+        <p class="eyebrow"><span>/06</span>Routes</p>
         <h2 class="section-title">Route D's head start is mostly timing, not tarmac</h2>
         <p class="section-lede" id="routes-lede"></p>
       </div>
@@ -350,7 +374,7 @@
 
     <section id="models" class="section">
       <div class="section-head">
-        <p class="eyebrow"><span>/06</span>Models</p>
+        <p class="eyebrow"><span>/07</span>Models</p>
         <h2 class="section-title">Seven models, tested by ride day</h2>
         <p class="section-lede" id="models-lede"></p>
       </div>
@@ -394,7 +418,7 @@
 
     <section id="planner" class="section">
       <div class="section-head">
-        <p class="eyebrow"><span>/07</span>Planner</p>
+        <p class="eyebrow"><span>/08</span>Planner</p>
         <h2 class="section-title">A leave-by time, 9 trips in 10</h2>
         <p class="section-lede" id="planner-lede"></p>
       </div>
@@ -446,7 +470,7 @@
 
     <section id="implications" class="section">
       <div class="section-head">
-        <p class="eyebrow"><span>/08</span>Takeaways</p>
+        <p class="eyebrow"><span>/09</span>Takeaways</p>
         <h2 class="section-title">What to do with it</h2>
       </div>
       <div id="implication-list" class="mt-10 grid gap-5 md:grid-cols-2"></div>
