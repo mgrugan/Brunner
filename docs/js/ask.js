@@ -6,7 +6,9 @@ import { BorderBeam } from "https://esm.sh/border-beam@1.4.1?deps=react@18.3.1,r
 const h = React.createElement;
 const { useEffect, useRef, useState } = React;
 
-const ENDPOINT = window.ASK_ENDPOINT || "/api/ask";
+const REMOTE_ENDPOINT = document.querySelector('meta[name="ask-endpoint"]')?.content?.trim();
+const SAME_ORIGIN = /vercel\.app$|^localhost$|^127\.0\.0\.1$/.test(window.location.hostname);
+const ENDPOINT = SAME_ORIGIN || !REMOTE_ENDPOINT ? "/api/ask" : REMOTE_ENDPOINT;
 
 const SUGGESTIONS = [
   "Why is the ride home slower?",

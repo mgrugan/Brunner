@@ -18,11 +18,31 @@ Rules:
 FACT SHEET
 ${DATASET_CONTEXT}`;
 
+const ALLOWED_ORIGINS = ["https://mgrugan.github.io"];
+
+function corsHeaders(request) {
+  const origin = request?.headers?.get("origin");
+  if (!origin || !ALLOWED_ORIGINS.includes(origin)) return {};
+  return {
+    "access-control-allow-origin": origin,
+    "access-control-allow-methods": "POST, GET, OPTIONS",
+    "access-control-allow-headers": "content-type",
+    "access-control-max-age": "86400",
+    vary: "origin",
+  };
+}
+
+let activeRequest = null;
+
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "application/json", "cache-control": "no-store" },
+    headers: { "content-type": "application/json", "cache-control": "no-store", ...corsHeaders(activeRequest) },
   });
+}
+
+export function OPTIONS(request) {
+  return new Response(null, { status: 204, headers: corsHeaders(request) });
 }
 
 function sanitizeHistory(history) {
@@ -34,6 +54,7 @@ function sanitizeHistory(history) {
 }
 
 export async function POST(request) {
+  activeRequest = request;
   const apiKey = process.env.GEMINI_API_KEY || process.env.AI_GATEWAY_API_KEY;
   if (!apiKey) {
     return json({ error: "The assistant is not configured on this deployment." }, 503);
@@ -83,6 +104,7 @@ export async function POST(request) {
   }
 }
 
-export function GET() {
+export function GET(request) {
+  activeRequest = request;
   return json({ ok: true, usage: "POST { question, history? }" });
 }

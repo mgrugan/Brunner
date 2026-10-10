@@ -7,6 +7,7 @@ const FACING = -1;
 const BIKE_LENGTH = 4;
 const IDLE_YAW = -0.42;
 const EXIT_YAW = 0;
+const DEBUG = new URLSearchParams(window.location.search).has("still");
 
 const container = document.getElementById("bike");
 const hero = document.getElementById("hero");
@@ -23,8 +24,15 @@ function easeInOut(t) {
   return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
 }
 
+function announceReady() {
+  window.dispatchEvent(new Event("bike:ready"));
+}
+
 function showPoster() {
   container.classList.add("is-poster");
+  const poster = container.querySelector(".bike-poster");
+  if (poster && !poster.complete) poster.addEventListener("load", announceReady, { once: true });
+  else announceReady();
   const update = () => {
     const progress = scrollProgress();
     const travel = easeInOut(Math.min(progress / 0.88, 1));
@@ -40,7 +48,7 @@ function createRenderer() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 1.0;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.setClearColor(0x000000, 0);
@@ -48,68 +56,304 @@ function createRenderer() {
 }
 
 function addLights(scene) {
-  scene.add(new THREE.HemisphereLight(0x9fb6bd, 0x050607, 0.35));
+  scene.add(new THREE.HemisphereLight(0xdfe8ea, 0x050607, 0.22));
 
-  const key = new THREE.DirectionalLight(0xfff1e6, 2.6);
-  key.position.set(2.5, 6, 4);
+  const key = new THREE.DirectionalLight(0xffffff, 2.6);
+  key.position.set(-2, 7, 5);
   key.castShadow = true;
   key.shadow.mapSize.set(2048, 2048);
-  key.shadow.camera.left = -4;
-  key.shadow.camera.right = 4;
-  key.shadow.camera.top = 4;
-  key.shadow.camera.bottom = -4;
-  key.shadow.radius = 6;
+  key.shadow.camera.left = -5;
+  key.shadow.camera.right = 5;
+  key.shadow.camera.top = 5;
+  key.shadow.camera.bottom = -5;
+  key.shadow.radius = 10;
   key.shadow.bias = -0.0004;
   scene.add(key);
 
-  const rim = new THREE.DirectionalLight(0x2f8fa6, 3.2);
-  rim.position.set(-4, 3, -5);
+  const fill = new THREE.DirectionalLight(0xe9eef0, 0.35);
+  fill.position.set(3, 1.5, 6);
+  scene.add(fill);
+
+  const rim = new THREE.DirectionalLight(0x3a9db5, 2.2);
+  rim.position.set(-3, 4, -6);
   scene.add(rim);
 
-  const warm = new THREE.PointLight(0xf27b38, 6, 9, 2);
-  warm.position.set(1.8, 0.4, 2.4);
-  scene.add(warm);
+  const kicker = new THREE.DirectionalLight(0xf2a070, 0.45);
+  kicker.position.set(6, 3, -3);
+  scene.add(kicker);
 }
 
-function normaliseModel(root) {
-  const box = new THREE.Box3().setFromObject(root);
-  const size = box.getSize(new THREE.Vector3());
-  if (size.z > size.x) root.rotation.y = Math.PI / 2;
-  root.updateMatrixWorld(true);
+function mattePaint(material) {
+  material.emissiveMap = null;
+  material.emissive?.setRGB(0, 0, 0);
+  material.envMapIntensity = 0.35;
+  if (material.map) material.map.anisotropy = 8;
+  material.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <roughnessmap_fragment>", "#include <roughnessmap_fragment>\nroughnessFactor = clamp(roughnessFactor, 0.48, 1.0);")
+      .replace("#include <metalnessmap_fragment>", "#include <metalnessmap_fragment>\nmetalnessFactor *= 0.45;");
+  };
+  material.needsUpdate = true;
+}
 
-  const turned = new THREE.Box3().setFromObject(root);
-  const scale = BIKE_LENGTH / turned.getSize(new THREE.Vector3()).x;
-  root.scale.multiplyScalar(scale);
-  root.updateMatrixWorld(true);
-
-  const fitted = new THREE.Box3().setFromObject(root);
-  const centre = fitted.getCenter(new THREE.Vector3());
-  root.position.x -= centre.x;
-  root.position.z -= centre.z;
-  root.position.y -= fitted.min.y;
-
+function findMesh(root) {
+  let found = null;
   root.traverse((node) => {
+    if (!found && node.isMesh) found = node;
+  });
+  return found;
+}
+
+function modelSpacePositions(mesh) {
+  const attribute = mesh.geometry.attributes.position;
+  const points = new Float32Array(attribute.count * 3);
+  const v = new THREE.Vector3();
+  for (let i = 0; i < attribute.count; i++) {
+    v.fromBufferAttribute(attribute, i).applyMatrix4(mesh.matrix);
+    points[i * 3] = v.x;
+    points[i * 3 + 1] = v.y;
+    points[i * 3 + 2] = v.z;
+  }
+  return points;
+}
+
+function median(values) {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)];
+}
+
+function locateWheels(points) {
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (let i = 0; i < points.length; i += 3) {
+    minX = Math.min(minX, points[i]);
+    maxX = Math.max(maxX, points[i]);
+    minY = Math.min(minY, points[i + 1]);
+    maxY = Math.max(maxY, points[i + 1]);
+  }
+  const contactBand = minY + (maxY - minY) * 0.01;
+  const midX = (minX + maxX) / 2;
+  const rearContacts = [];
+  const frontContacts = [];
+  for (let i = 0; i < points.length; i += 3) {
+    if (points[i + 1] > contactBand) continue;
+    (points[i] < midX ? rearContacts : frontContacts).push(points[i]);
+  }
+  const guessRadius = ((median(rearContacts) - minX) + (maxX - median(frontContacts))) / 2;
+
+  const fitted = [median(rearContacts), median(frontContacts)].map((startX) => {
+    let cx = startX;
+    let cy = minY + guessRadius;
+    let radius = guessRadius;
+    for (let iteration = 0; iteration < 6; iteration++) {
+      let sxx = 0, sxy = 0, sx = 0, syy = 0, sy = 0, n = 0, sxb = 0, syb = 0, sb = 0;
+      for (let i = 0; i < points.length; i += 3) {
+        const px = points[i];
+        const py = points[i + 1];
+        const d = Math.hypot(px - cx, py - cy);
+        if (d < guessRadius * 0.85 || d > guessRadius * 1.08 || Math.abs(points[i + 2]) > guessRadius * 0.13) continue;
+        const b = px * px + py * py;
+        sxx += 4 * px * px; sxy += 4 * px * py; sx += 2 * px; syy += 4 * py * py; sy += 2 * py; n += 1;
+        sxb += 2 * px * b; syb += 2 * py * b; sb += b;
+      }
+      const m = [[sxx, sxy, sx], [sxy, syy, sy], [sx, sy, n]];
+      const v = [sxb, syb, sb];
+      const solution = solve3(m, v);
+      if (!solution) break;
+      cx = solution[0];
+      cy = solution[1];
+      radius = Math.sqrt(solution[2] + cx * cx + cy * cy);
+    }
+    return { x: cx, radius };
+  });
+
+  const tyreRadius = (fitted[0].radius + fitted[1].radius) / 2 + guessRadius * 0.03;
+  return fitted.map(({ x }) => ({ x, y: minY + tyreRadius, z: 0, radius: tyreRadius }));
+}
+
+function solve3(m, v) {
+  const a = m.map((row, i) => [...row, v[i]]);
+  for (let col = 0; col < 3; col++) {
+    let pivot = col;
+    for (let row = col + 1; row < 3; row++) if (Math.abs(a[row][col]) > Math.abs(a[pivot][col])) pivot = row;
+    if (Math.abs(a[pivot][col]) < 1e-12) return null;
+    [a[col], a[pivot]] = [a[pivot], a[col]];
+    for (let row = 0; row < 3; row++) {
+      if (row === col) continue;
+      const factor = a[row][col] / a[col][col];
+      for (let k = col; k < 4; k++) a[row][k] -= factor * a[col][k];
+    }
+  }
+  return [a[0][3] / a[0][0], a[1][3] / a[1][1], a[2][3] / a[2][2]];
+}
+
+function belongsToWheel(cx, cy, cz, wheel) {
+  const d = Math.hypot(cx - wheel.x, cy - wheel.y);
+  const r = wheel.radius;
+  if (d > r * 1.14) return false;
+  const depth = Math.abs(cz - wheel.z);
+  if (d < r * 0.12) return depth < r * 0.12;
+  if (d < r * 0.55) return depth < r * 0.05;
+  return depth < r * 0.095;
+}
+
+const WHEEL_MATERIALS = {
+  tyre: new THREE.MeshStandardMaterial({ color: 0x060707, roughness: 0.72, metalness: 0, envMapIntensity: 0.4 }),
+  rim: new THREE.MeshPhysicalMaterial({ color: 0x0b0c0d, roughness: 0.4, metalness: 0.1, clearcoat: 0.5, clearcoatRoughness: 0.35, envMapIntensity: 0.5 }),
+  accent: new THREE.MeshStandardMaterial({ color: 0xf27b38, roughness: 0.5, metalness: 0.1, emissive: 0x3a1404 }),
+  spoke: new THREE.MeshStandardMaterial({ color: 0x2b2f33, roughness: 0.45, metalness: 0.6 }),
+  hub: new THREE.MeshStandardMaterial({ color: 0x1a1d1f, roughness: 0.5, metalness: 0.4 }),
+  steel: new THREE.MeshStandardMaterial({ color: 0x8d9398, roughness: 0.38, metalness: 0.85 }),
+};
+
+function ringGeometry(outer, inner, depth, segments = 160) {
+  const shape = new THREE.Shape();
+  shape.absarc(0, 0, outer, 0, Math.PI * 2, false);
+  const hole = new THREE.Path();
+  hole.absarc(0, 0, inner, 0, Math.PI * 2, true);
+  shape.holes.push(hole);
+  const geometry = new THREE.ExtrudeGeometry(shape, {
+    depth,
+    curveSegments: segments,
+    bevelEnabled: true,
+    bevelThickness: depth * 0.18,
+    bevelSize: depth * 0.12,
+    bevelSegments: 3,
+  });
+  geometry.translate(0, 0, -depth / 2);
+  return geometry;
+}
+
+function buildWheel(R, withCassette) {
+  const wheel = new THREE.Group();
+
+  wheel.add(new THREE.Mesh(new THREE.TorusGeometry(R * 0.955, R * 0.045, 28, 180), WHEEL_MATERIALS.tyre));
+  wheel.add(new THREE.Mesh(ringGeometry(R * 0.918, R * 0.765, R * 0.05), WHEEL_MATERIALS.rim));
+  [-1, 1].forEach((side) => {
+    const stripe = new THREE.Mesh(new THREE.TorusGeometry(R * 0.842, R * 0.0032, 8, 180), WHEEL_MATERIALS.accent);
+    stripe.position.z = side * R * 0.036;
+    wheel.add(stripe);
+  });
+
+  const spokeCount = 24;
+  const spokes = new THREE.InstancedMesh(new THREE.CylinderGeometry(R * 0.0035, R * 0.0035, 1, 6), WHEEL_MATERIALS.spoke, spokeCount);
+  const up = new THREE.Vector3(0, 1, 0);
+  const matrix = new THREE.Matrix4();
+  const quaternion = new THREE.Quaternion();
+  for (let i = 0; i < spokeCount; i++) {
+    const angle = (i / spokeCount) * Math.PI * 2;
+    const side = i % 2 === 0 ? 1 : -1;
+    const hubAngle = angle + side * 0.22;
+    const hubEnd = new THREE.Vector3(Math.cos(hubAngle) * R * 0.06, Math.sin(hubAngle) * R * 0.06, side * R * 0.045);
+    const rimEnd = new THREE.Vector3(Math.cos(angle) * R * 0.768, Math.sin(angle) * R * 0.768, 0);
+    const direction = rimEnd.clone().sub(hubEnd);
+    const length = direction.length();
+    quaternion.setFromUnitVectors(up, direction.normalize());
+    matrix.compose(hubEnd.clone().add(rimEnd).multiplyScalar(0.5), quaternion, new THREE.Vector3(1, length, 1));
+    spokes.setMatrixAt(i, matrix);
+  }
+  wheel.add(spokes);
+
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.05, R * 0.05, R * 0.16, 32), WHEEL_MATERIALS.hub);
+  hub.rotation.x = Math.PI / 2;
+  wheel.add(hub);
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.022, R * 0.022, R * 0.18, 24), WHEEL_MATERIALS.accent);
+  cap.rotation.x = Math.PI / 2;
+  wheel.add(cap);
+
+  const rotor = new THREE.Mesh(ringGeometry(R * 0.215, R * 0.165, R * 0.006, 96), WHEEL_MATERIALS.steel);
+  rotor.position.z = R * 0.075;
+  wheel.add(rotor);
+  const carrier = new THREE.Mesh(ringGeometry(R * 0.165, R * 0.05, R * 0.008, 64), WHEEL_MATERIALS.hub);
+  carrier.position.z = R * 0.075;
+  wheel.add(carrier);
+
+  if (withCassette) {
+    for (let i = 0; i < 7; i++) {
+      const cog = new THREE.Mesh(new THREE.CylinderGeometry(R * (0.17 - i * 0.014), R * (0.17 - i * 0.014), R * 0.006, 48), WHEEL_MATERIALS.steel);
+      cog.rotation.x = Math.PI / 2;
+      cog.position.z = -R * (0.06 + i * 0.011);
+      wheel.add(cog);
+    }
+  }
+
+  wheel.traverse((node) => {
+    if (node.isMesh) node.castShadow = true;
+  });
+  return wheel;
+}
+
+function splitWheels(mesh) {
+  const points = modelSpacePositions(mesh);
+  const wheels = locateWheels(points);
+  const index = mesh.geometry.index.array;
+  const kept = [];
+  for (let t = 0; t < index.length; t += 3) {
+    const a = index[t] * 3;
+    const b = index[t + 1] * 3;
+    const c = index[t + 2] * 3;
+    const cx = (points[a] + points[b] + points[c]) / 3;
+    const cy = (points[a + 1] + points[b + 1] + points[c + 1]) / 3;
+    const cz = (points[a + 2] + points[b + 2] + points[c + 2]) / 3;
+    if (wheels.some((wheel) => belongsToWheel(cx, cy, cz, wheel))) continue;
+    kept.push(index[t], index[t + 1], index[t + 2]);
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  Object.entries(mesh.geometry.attributes).forEach(([name, attribute]) => geometry.setAttribute(name, attribute));
+  geometry.setIndex(new THREE.BufferAttribute(new index.constructor(kept), 1));
+  geometry.computeBoundingSphere();
+
+  const container = new THREE.Group();
+  const frame = new THREE.Mesh(geometry, mesh.material);
+  frame.applyMatrix4(mesh.matrix);
+  container.add(frame);
+
+  const spinners = wheels.map((wheel, i) => {
+    const pivot = new THREE.Group();
+    pivot.position.set(wheel.x, wheel.y, wheel.z);
+    pivot.add(buildWheel(wheel.radius, i === 0));
+    container.add(pivot);
+    return pivot;
+  });
+
+  return { container, spinners, radius: wheels[0].radius };
+}
+
+function buildBike(root) {
+  root.updateMatrixWorld(true);
+  const mesh = findMesh(root);
+  const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+  materials.forEach(mattePaint);
+  const { container: model, spinners, radius } = splitWheels(mesh);
+
+  const box = new THREE.Box3().setFromObject(model);
+  const size = box.getSize(new THREE.Vector3());
+  const scale = BIKE_LENGTH / size.x;
+  model.scale.setScalar(scale);
+  model.updateMatrixWorld(true);
+  const fitted = new THREE.Box3().setFromObject(model);
+  const centre = fitted.getCenter(new THREE.Vector3());
+  model.position.set(-centre.x, -fitted.min.y, -centre.z);
+
+  model.traverse((node) => {
     if (!node.isMesh) return;
     node.castShadow = true;
     node.receiveShadow = true;
-    const materials = Array.isArray(node.material) ? node.material : [node.material];
-    materials.forEach((material) => {
-      if ("envMapIntensity" in material) material.envMapIntensity = 0.9;
-      if (material.emissiveMap) material.emissiveIntensity = 0.12;
-      if (material.map) material.map.anisotropy = 8;
-    });
   });
 
-  const pivot = new THREE.Group();
   const facing = new THREE.Group();
   facing.rotation.y = FACING === 1 ? 0 : Math.PI;
-  facing.add(root);
+  facing.add(model);
+  const pivot = new THREE.Group();
   pivot.add(facing);
-  return pivot;
+  return { bike: pivot, spinners, wheelRadius: radius * scale };
 }
 
 function addGround(scene) {
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.ShadowMaterial({ opacity: 0.55 }));
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.ShadowMaterial({ opacity: 0.6 }));
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   scene.add(ground);
@@ -134,8 +378,14 @@ function init() {
   const camera = new THREE.PerspectiveCamera(28, 1, 0.1, 100);
   container.appendChild(renderer.domElement);
 
-  let bike = null;
+  let rig = null;
   let loadedAt = 0;
+  let revealed = document.documentElement.classList.contains("is-loaded");
+  window.addEventListener("app:revealed", () => {
+    revealed = true;
+    loadedAt = performance.now();
+  });
+  let restOrigin = null;
   const cameraTarget = new THREE.Vector3(0, 1.2, 0);
 
   function resize() {
@@ -158,18 +408,24 @@ function init() {
   function render(time) {
     const progress = scrollProgress();
     stage.style.setProperty("--hero-progress", progress.toFixed(4));
-    if (bike) {
-      const since = (time - loadedAt) / 1000;
-      const entrance = reduceMotion ? 1 : 1 - Math.pow(1 - Math.min(Math.max(since, 0) / 2.2, 1), 3);
+    if (rig) {
+      const { bike, spinners, wheelRadius } = rig;
+      const since = revealed ? (time - loadedAt) / 1000 : 0;
+      const entrance = reduceMotion || DEBUG ? 1 : revealed ? 1 - Math.pow(1 - Math.min(Math.max(since, 0) / 2.4, 1), 3) : 0;
       const travel = easeInOut(Math.min(progress / 0.88, 1));
       const halfWidth = frustumHalfWidth();
       const restX = camera.aspect < 0.9 ? 0 : halfWidth * 0.22;
       const startX = -halfWidth - BIKE_LENGTH;
       const exitX = halfWidth + BIKE_LENGTH * 1.2;
       bike.position.x = startX + (restX - startX) * entrance + (exitX - restX) * travel;
-      const idleSway = reduceMotion ? 0 : Math.sin(since * 0.45) * 0.06 * (1 - travel);
+      if (restOrigin === null) restOrigin = startX;
+      const rolled = (bike.position.x - restOrigin) / wheelRadius;
+      spinners.forEach((wheel) => {
+        wheel.rotation.z = rolled * FACING * -1;
+      });
+      const idleSway = reduceMotion || DEBUG ? 0 : Math.sin(since * 0.45) * 0.06 * (1 - travel);
       const turn = Math.min(progress / 0.25, 1);
-      bike.rotation.y = IDLE_YAW + (EXIT_YAW - IDLE_YAW) * easeInOut(turn) + idleSway;
+      bike.rotation.y = DEBUG ? 0 : IDLE_YAW + (EXIT_YAW - IDLE_YAW) * easeInOut(turn) + idleSway;
     }
     renderer.render(scene, camera);
   }
@@ -193,10 +449,14 @@ function init() {
   new GLTFLoader().load(
     MODEL_URL,
     (gltf) => {
-      bike = normaliseModel(gltf.scene);
-      scene.add(bike);
-      loadedAt = performance.now();
+      rig = buildBike(gltf.scene);
+      scene.add(rig.bike);
+      if (revealed) loadedAt = performance.now();
       container.classList.add("is-ready");
+      renderer.compileAsync(scene, camera).catch(() => {}).finally(() => {
+        render(performance.now());
+        announceReady();
+      });
     },
     undefined,
     () => {
