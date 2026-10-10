@@ -138,16 +138,13 @@
   <div id="menu" class="menu-overlay" aria-hidden="true">
     <button id="menu-close" class="absolute right-6 top-6 text-3xl font-extralight text-brand-ink sm:right-10" aria-label="Close menu">&times;</button>
     <nav class="flex h-full flex-col justify-center gap-2 px-8 sm:px-20">
-      <a class="menu-link" href="#summary"><span>/00</span>Overview</a>
-      <a class="menu-link" href="#direction"><span>/01</span>Direction</a>
-      <a class="menu-link" href="#temperature"><span>/02</span>Temperature</a>
-      <a class="menu-link" href="#weather"><span>/03</span>Wind &amp; weather</a>
-      <a class="menu-link" href="#fitness"><span>/04</span>Fitness</a>
-      <a class="menu-link" href="#years"><span>/05</span>Over time</a>
-      <a class="menu-link" href="#routes"><span>/06</span>Routes</a>
-      <a class="menu-link" href="#models"><span>/07</span>Models</a>
-      <a class="menu-link" href="#planner"><span>/08</span>Planner</a>
-      <a class="menu-link" href="#implications"><span>/09</span>Takeaways</a>
+      <a class="menu-link" href="#summary"><span>/00</span>Short version</a>
+      <a class="menu-link" href="#direction"><span>/01</span>Direction &amp; wind</a>
+      <a class="menu-link" href="#fitness"><span>/02</span>Fitness &amp; cold</a>
+      <a class="menu-link" href="#years"><span>/03</span>Over time</a>
+      <a class="menu-link" href="#models"><span>/04</span>Models</a>
+      <a class="menu-link" href="#planner"><span>/05</span>Planner</a>
+      <a class="menu-link" href="#implications"><span>/06</span>Takeaways</a>
     </nav>
   </div>
 
@@ -174,7 +171,7 @@
 
         <ul class="hero-side">
           <li><a href="#summary">Overview</a></li>
-          <li><a href="#temperature">Findings</a></li>
+          <li><a href="#direction">Findings</a></li>
           <li><a href="#models">Models</a></li>
           <li><a href="#planner">Planner</a></li>
         </ul>
@@ -193,24 +190,15 @@
 
     <section id="summary" class="section">
       <div class="section-head">
-        <p class="eyebrow"><span>/00</span>Overview</p>
-        <h2 class="section-title">Four findings that survive every model</h2>
+        <p class="eyebrow"><span>/00</span>The short version</p>
+        <h2 class="section-title">What 143 rides say about the commute</h2>
       </div>
-      <div id="finding-cards" class="mt-10 grid gap-5 md:grid-cols-2 xl:grid-cols-4"></div>
-      <div class="mt-8 grid items-center gap-8 lg:grid-cols-5">
-        <div class="lg:col-span-2">
-          <h3 class="chart-title">The season wheel</h3>
-          <p class="chart-sub">Every trip placed by calendar day. The further a dot sits from the centre, the longer the ride took. Blue dots went to work, orange ones came home.</p>
-        </div>
-        <div class="lg:col-span-3">
-          <div class="relative mx-auto aspect-square w-full max-w-[520px]"><div id="wheel" class="h-full w-full"></div></div>
-        </div>
-      </div>
+      <div id="finding-cards" class="mt-10 grid gap-5 sm:grid-cols-2 xl:grid-cols-5"></div>
       <div class="card mt-8">
         <div class="flex flex-wrap items-end justify-between gap-4">
           <div>
             <h3 class="chart-title">Every trip on record</h3>
-            <p class="chart-sub">Trip time by date. Hover a dot for detail. The shaded gap is 2020, when no rides were logged.</p>
+            <p class="chart-sub">Trip time by date. Lines mark each season's median. 2020 had no rides.</p>
           </div>
           <div class="seg" data-target="timeline">
             <button data-value="all" class="active">Both</button>
@@ -225,200 +213,81 @@
 
     <section id="direction" class="section">
       <div class="section-head">
-        <p class="eyebrow"><span>/01</span>Direction</p>
-        <h2 class="section-title">The ride home runs about six minutes slower, every time</h2>
+        <p class="eyebrow"><span>/01</span>Direction &amp; wind</p>
+        <h2 class="section-title">Home is six minutes slower, and the wind isn't why</h2>
         <p class="section-lede" id="direction-lede"></p>
       </div>
       <div class="mt-10 grid gap-6 lg:grid-cols-5">
         <div class="card lg:col-span-2">
           <h3 class="chart-title">Same day, same route</h3>
-          <p class="chart-sub">Each line joins a morning trip to that evening's return.</p>
-          <div id="slope" class="chart h-[380px]"></div>
+          <p class="chart-sub">Each line joins a morning ride to that evening's return.</p>
+          <div id="slope" class="chart h-[360px]"></div>
         </div>
         <div class="card lg:col-span-3">
-          <h3 class="chart-title">The size of the gap</h3>
-          <p class="chart-sub">Home minus work, in minutes, for each paired day on Route A.</p>
-          <div id="gap-hist" class="chart h-[260px]"></div>
-          <div id="direction-stats" class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4"></div>
+          <h3 class="chart-title">Headwind costs time</h3>
+          <p class="chart-sub">Seconds faster or slower than expected, against the headwind on that ride. Below zero is a tailwind.</p>
+          <div class="legend mt-3"><span class="key sky"></span>To work <span class="key orange ml-4"></span>To home</div>
+          <div id="wind-scatter" class="chart h-[310px]"></div>
         </div>
       </div>
-      <div class="callout mt-6" id="direction-callout"></div>
     </section>
 
-    <section id="temperature" class="section">
+    <section id="fitness" class="section">
       <div class="section-head">
-        <p class="eyebrow"><span>/02</span>Temperature</p>
-        <h2 class="section-title">Cold mornings look slow mostly because they come early in the season</h2>
-        <p class="section-lede" id="temperature-lede"></p>
+        <p class="eyebrow"><span>/02</span>Fitness &amp; cold</p>
+        <h2 class="section-title">Fitness sets the pace. Cold gets the blame.</h2>
+        <p class="section-lede" id="fitness-lede"></p>
       </div>
       <div class="mt-10 grid gap-6 lg:grid-cols-5">
         <div class="card lg:col-span-3">
-          <div class="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h3 class="chart-title">Raw trend vs. adjusted effect</h3>
-              <p class="chart-sub">White line: raw LOWESS, a smoothed average. Coloured line: a spline model fitted for each direction, with ride number, calendar, layoff and year held at their medians. The band is a 90% day-level bootstrap interval.</p>
-            </div>
-            <div class="flex items-center gap-3">
-              <div class="seg" data-target="temperature">
-                <button data-value="Work" class="active">To work</button>
-                <button data-value="Home">To home</button>
-              </div>
-            </div>
-          </div>
-          <div class="legend mt-3"><span class="key ink"></span>Raw trend <span class="key orange ml-4" id="temp-key"></span><span id="temp-key-label">Adjusted effect</span></div>
-          <div id="temp-gam" class="chart h-[340px]"></div>
+          <h3 class="chart-title">Faster with every ride</h3>
+          <p class="chart-sub">Time vs. typical by ride number in the season, with direction and temperature removed.</p>
+          <div class="legend mt-3"><span class="key sky"></span>To work <span class="key orange ml-4"></span>To home <span class="key ink ml-4"></span>Average</div>
+          <div id="learning" class="chart h-[340px]"></div>
         </div>
         <div class="card lg:col-span-2">
           <h3 class="chart-title">Where the cold penalty goes</h3>
           <p class="chart-sub" id="cold-sub"></p>
           <div id="cold-penalty" class="chart h-[250px]"></div>
-          <p class="mt-4 text-sm leading-relaxed text-brand-muted" id="cold-note"></p>
-        </div>
-      </div>
-    </section>
-
-    <section id="weather" class="section">
-      <div class="section-head">
-        <p class="eyebrow"><span>/03</span>Wind &amp; weather</p>
-        <h2 class="section-title">The wind costs seconds, but it isn't why home is slower</h2>
-        <p class="section-lede" id="weather-lede"></p>
-      </div>
-      <div class="mt-10 grid gap-6 lg:grid-cols-5">
-        <div class="card lg:col-span-2">
-          <h3 class="chart-title">Which way is the commute?</h3>
-          <p class="chart-sub">Model fit for every possible route bearing. The arrow marks the direction of the ride to work that best explains the times.</p>
-          <div id="wind-compass" class="chart h-[340px]"></div>
-        </div>
-        <div class="card lg:col-span-3">
-          <h3 class="chart-title">Headwind vs. trip time</h3>
-          <p class="chart-sub">Seconds faster or slower than expected after direction, temperature and fitness, against the headwind on that ride. Negative headwind is a tailwind.</p>
-          <div class="legend mt-3"><span class="key sky"></span>To work <span class="key orange ml-4"></span>To home</div>
-          <div id="wind-scatter" class="chart h-[300px]"></div>
-        </div>
-      </div>
-      <div id="weather-tiles" class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4"></div>
-      <div class="callout mt-6" id="weather-callout"></div>
-    </section>
-
-    <section id="fitness" class="section">
-      <div class="section-head">
-        <p class="eyebrow"><span>/04</span>Fitness</p>
-        <h2 class="section-title">Each season starts slow, and each ride speeds up the next</h2>
-        <p class="section-lede" id="fitness-lede"></p>
-      </div>
-      <div class="mt-10 grid gap-6 lg:grid-cols-3">
-        <div class="card lg:col-span-2">
-          <h3 class="chart-title">The in-season learning curve</h3>
-          <p class="chart-sub">Trip time with direction and temperature removed, by ride number within the season. White curve: the ensemble's partial dependence, its average response to ride number.</p>
-          <div class="legend mt-3"><span class="key sky"></span>To work <span class="key orange ml-4"></span>To home <span class="key ink ml-4"></span>Bucket mean</div>
-          <div id="learning" class="chart h-[360px]"></div>
-        </div>
-        <div class="card">
-          <h3 class="chart-title">Interaction surface</h3>
-          <p class="chart-sub">Ensemble prediction across temperature and ride number. Brighter means slower.</p>
-          <div class="seg mt-3" data-target="surface">
-            <button data-value="Work" class="active">To work</button>
-            <button data-value="Home">To home</button>
-          </div>
-          <div id="surface" class="chart h-[300px]"></div>
-          <div id="surface-legend" class="mt-2"></div>
         </div>
       </div>
     </section>
 
     <section id="years" class="section">
       <div class="section-head">
-        <p class="eyebrow"><span>/05</span>Over time</p>
-        <h2 class="section-title">Not slower, just riding less</h2>
+        <p class="eyebrow"><span>/03</span>Over time</p>
+        <h2 class="section-title">Not slowing down. Riding less.</h2>
         <p class="section-lede" id="years-lede"></p>
       </div>
-      <div class="mt-10 grid gap-6 lg:grid-cols-2">
-        <div class="card">
-          <h3 class="chart-title">Trips logged per season</h3>
-          <p class="chart-sub">Commute frequency fell by roughly 85% after 2019.</p>
-          <div id="frequency" class="chart h-[300px]"></div>
-        </div>
-        <div class="card">
-          <h3 class="chart-title">Season effect vs. 2019</h3>
-          <p class="chart-sub">Seconds slower (+) or faster (−) than 2019, with 95% intervals. Account for ride count within the season and the sign flips.</p>
-          <div class="legend mt-3"><span class="key sky"></span>Direction + temperature adjusted <span class="key orange ml-4"></span>+ ride number &amp; layoff adjusted</div>
-          <div id="season-effects" class="chart h-[300px]"></div>
-        </div>
-      </div>
-      <div id="trend-tiles" class="mt-6 grid gap-4 sm:grid-cols-3"></div>
-    </section>
-
-    <section id="routes" class="section">
-      <div class="section-head">
-        <p class="eyebrow"><span>/06</span>Routes</p>
-        <h2 class="section-title">Route D's head start is mostly timing, not tarmac</h2>
-        <p class="section-lede" id="routes-lede"></p>
-      </div>
       <div class="mt-10 grid gap-6 lg:grid-cols-5">
-        <div class="card lg:col-span-3">
-          <h3 class="chart-title">Speed by route</h3>
-          <p class="chart-sub">Average speed for every trip; tick marks show the route mean.</p>
-          <div class="seg mt-3" data-target="routes">
-            <button data-value="Work" class="active">To work</button>
-            <button data-value="Home">To home</button>
-          </div>
-          <div id="route-strip" class="chart h-[320px]"></div>
-        </div>
         <div class="card lg:col-span-2">
-          <h3 class="chart-title">Raw vs. adjusted</h3>
-          <p class="chart-sub">Route D compared with Route A on trips to work.</p>
-          <div id="route-compare" class="mt-6 space-y-5"></div>
+          <h3 class="chart-title">Rides per season</h3>
+          <div id="frequency" class="chart mt-4 h-[300px]"></div>
+        </div>
+        <div class="card lg:col-span-3">
+          <h3 class="chart-title">Speed vs. 2019, like for like</h3>
+          <div class="legend mt-3"><span class="key sky"></span>Direction &amp; temperature adjusted <span class="key orange ml-4"></span>+ fitness adjusted</div>
+          <div id="season-effects" class="chart h-[300px]"></div>
         </div>
       </div>
     </section>
 
     <section id="models" class="section">
       <div class="section-head">
-        <p class="eyebrow"><span>/07</span>Models</p>
-        <h2 class="section-title">Seven models, tested by ride day</h2>
+        <p class="eyebrow"><span>/04</span>Models</p>
+        <h2 class="section-title">Seven models agree: the pattern is simple</h2>
         <p class="section-lede" id="models-lede"></p>
       </div>
-      <div class="mt-10 grid gap-6 lg:grid-cols-2">
-        <div class="card">
-          <h3 class="chart-title">Leaderboard</h3>
-          <p class="chart-sub">Cross-validated RMSE in seconds, the typical size of a miss, so lower is better. Five folds, five repeats, with a day's morning and evening trips kept together so neither leaks across training and test.</p>
-          <div id="leaderboard" class="chart h-[320px]"></div>
-        </div>
-        <div class="card">
-          <h3 class="chart-title">Predicting forward in time</h3>
-          <p class="chart-sub">Each model trains on all earlier seasons and predicts the next. Cells show mean absolute error in seconds.</p>
-          <div id="forward" class="mt-4 overflow-x-auto"></div>
-        </div>
-      </div>
-      <div class="mt-6 grid gap-6 lg:grid-cols-5">
-        <div class="card lg:col-span-3">
-          <h3 class="chart-title">SHAP: what moves each trip's clock</h3>
-          <p class="chart-sub">One dot per trip per feature. Position shows seconds added or saved. Colour runs from low feature values (blue) to high (orange).</p>
-          <div id="shap" class="chart h-[440px]"></div>
-        </div>
-        <div class="card lg:col-span-2">
-          <h3 class="chart-title">Three lenses on importance</h3>
-          <p class="chart-sub">Tree SHAP, permutation importance (the error added when a feature is scrambled) and the Gaussian process's learned relevance (inverse ARD length-scale).</p>
-          <div id="importance" class="mt-4"></div>
-        </div>
-      </div>
-      <div class="mt-6 grid gap-6 lg:grid-cols-2">
-        <div class="card">
-          <h3 class="chart-title">The trips the models didn't expect</h3>
-          <p class="chart-sub">Largest out-of-fold residuals from the best model.</p>
-          <div id="anomalies" class="mt-4 overflow-x-auto"></div>
-        </div>
-        <div class="card">
-          <h3 class="chart-title">Days off the bike</h3>
-          <p class="chart-sub">Partial dependence on days since the previous ride. A long layoff adds a little rust.</p>
-          <div id="rust" class="chart h-[280px]"></div>
-        </div>
+      <div class="card mt-10">
+        <h3 class="chart-title">Prediction error by model</h3>
+        <p class="chart-sub">Cross-validated, grouped by ride day so a morning and evening ride never split across training and testing.</p>
+        <div id="leaderboard" class="chart h-[320px]"></div>
       </div>
     </section>
 
     <section id="planner" class="section">
       <div class="section-head">
-        <p class="eyebrow"><span>/08</span>Planner</p>
+        <p class="eyebrow"><span>/05</span>Planner</p>
         <h2 class="section-title">A leave-by time, 9 trips in 10</h2>
         <p class="section-lede" id="planner-lede"></p>
       </div>
@@ -468,29 +337,13 @@
       </div>
     </section>
 
-    <section id="implications" class="section">
+    <section id="implications" class="section pb-24">
       <div class="section-head">
-        <p class="eyebrow"><span>/09</span>Takeaways</p>
+        <p class="eyebrow"><span>/06</span>Takeaways</p>
         <h2 class="section-title">What to do with it</h2>
       </div>
-      <div id="implication-list" class="mt-10 grid gap-5 md:grid-cols-2"></div>
-    </section>
-
-    <section id="methods" class="section pb-24">
-      <div class="card">
-        <div class="grid gap-8 lg:grid-cols-3">
-          <div>
-            <p class="eyebrow">Methods</p>
-            <h3 class="mt-3 font-display text-2xl font-semibold">How the analysis was built</h3>
-            <p class="mt-3 text-sm leading-relaxed text-brand-muted">A reproducible Python pipeline (<span class="font-mono text-brand-ink">python commute_analysis.py</span>) reads the workbook, builds the features, runs the statistics and models, writes every number on this page to <span class="font-mono text-brand-ink">docs/data/analysis.js</span>, and renders the static figures for the written report.</p>
-          </div>
-          <ul class="method-list lg:col-span-2" id="method-list"></ul>
-        </div>
-      </div>
-      <div class="mt-6 rounded-2xl border border-brand-line/60 p-6 text-sm text-brand-muted">
-        <p class="font-semibold text-brand-ink">Caveats</p>
-        <p class="mt-2 leading-relaxed">143 trips is a small sample. Departure time, wind, elevation, traffic and rain were not recorded, so "direction" absorbs everything that differs between a morning and an evening ride. Six routes share seven trips between them, so route-level conclusions are tentative. Every effect here is an association, not the result of a controlled experiment.</p>
-      </div>
+      <div id="implication-list" class="mt-10 grid gap-x-10 md:grid-cols-2"></div>
+      <p class="mt-10 max-w-3xl text-sm leading-relaxed text-brand-muted" id="caveat"></p>
     </section>
   </main>
 

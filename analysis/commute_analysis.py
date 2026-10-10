@@ -152,7 +152,7 @@ def paired_days(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def headline_metrics(df: pd.DataFrame) -> dict:
-    return {
+    result = {
         "trips": int(len(df)),
         "ride_days": int(df["date"].nunique()),
         "seasons": int(df["season"].nunique()),
@@ -167,6 +167,10 @@ def headline_metrics(df: pd.DataFrame) -> dict:
         "temperature_range": [int(df["temperature_f"].min()), int(df["temperature_f"].max())],
         "share_primary_route": round(float(df["is_primary_route"].mean()), 3),
     }
+    print(f"Loaded {result['trips']} trips over {result['ride_days']} ride days, {result['first_ride']} to {result['last_ride']}.")
+    print(f"That's {result['total_miles']} miles and {result['total_hours']} hours on the bike, averaging {result['mean_mph']} mph.")
+    print(f"Route A carries {result['share_primary_route']:.0%} of trips, and temperatures ranged from {result['temperature_range'][0]} to {result['temperature_range'][1]}°F.")
+    return result
 
 
 def _summarise(group: pd.DataFrame) -> pd.Series:
@@ -229,7 +233,7 @@ def paired_day_summary(df: pd.DataFrame) -> dict:
     pairs = paired_days(df)
     both_primary = pairs[(pairs["route_home"] == "A") & (pairs["route_work"] == "A")]
     correlation = np.corrcoef(both_primary["minutes_home"], both_primary["minutes_work"])[0, 1]
-    return {
+    result = {
         "paired_days": int(len(pairs)),
         "paired_days_primary_route": int(len(both_primary)),
         "mean_gap_minutes": round(float(both_primary["gap_minutes"].mean()), 2),
@@ -238,6 +242,9 @@ def paired_day_summary(df: pd.DataFrame) -> dict:
         "mean_temp_rise": round(float(both_primary["temp_rise"].mean()), 1),
         "same_day_correlation": round(float(correlation), 3),
     }
+    print(f"{result['paired_days_primary_route']} days have a Route A ride in both directions, and home was slower on {result['share_home_slower']:.0%} of them.")
+    print(f"Evenings were {result['mean_temp_rise']}°F warmer on average, and same-day times correlate at r = {result['same_day_correlation']}.")
+    return result
 
 
 def lowess_curves(df: pd.DataFrame, x: str, frac: float = 0.6, points: int = 50) -> dict:
@@ -287,7 +294,7 @@ def direction_gap_tests(df: pd.DataFrame) -> dict:
     wilcoxon = stats.wilcoxon(gap)
     low, high = bootstrap_ci(gap)
     effect_size = gap.mean() / gap.std(ddof=1)
-    return {
+    result = {
         "n_pairs": int(len(gap)),
         "mean_gap": round(float(gap.mean()), 3),
         "median_gap": round(float(np.median(gap)), 3),
@@ -299,6 +306,10 @@ def direction_gap_tests(df: pd.DataFrame) -> dict:
         "min_gap": round(float(gap.min()), 2),
         "max_gap": round(float(gap.max()), 2),
     }
+    print(f"Median home-minus-work gap: {result['median_gap']:.2f} min (95% bootstrap CI {result['median_gap_ci'][0]:.2f} to {result['median_gap_ci'][1]:.2f}).")
+    print(f"Paired t-test: t = {result['t_statistic']}, p = {result['t_p_value']:.1e}. Wilcoxon signed-rank: p = {result['wilcoxon_p_value']:.1e}.")
+    print(f"Effect size (Cohen's dz): {result['cohens_dz']}, where anything above 0.8 counts as large.")
+    return result
 
 
 def adjusted_ols(df: pd.DataFrame):
@@ -318,19 +329,22 @@ def mixed_model(df: pd.DataFrame) -> dict:
         result = model.fit(reml=True)
     day_variance = float(result.cov_re.iloc[0, 0])
     residual_variance = float(result.scale)
-    return {
+    result = {
         "coefficients": _coefficient_table(result),
         "day_variance": round(day_variance, 3),
         "residual_variance": round(residual_variance, 3),
         "icc": round(day_variance / (day_variance + residual_variance), 3),
         "on_boundary": bool(day_variance < 1e-3),
     }
+    print(f"Mixed model with a random intercept per ride day: ICC = {result['icc']} (near zero means there are no 'fast days').")
+    return result
 
 
 def same_day_residual_correlation(df: pd.DataFrame, residuals: pd.Series) -> dict:
     frame = df.assign(residual=residuals.to_numpy())
     wide = frame.pivot_table(index="date", columns="destination", values="residual").dropna()
     result = stats.pearsonr(wide["Work"], wide["Home"])
+    print(f"Correlation between the morning and evening residuals on the same day: r = {result.statistic:.3f}, p = {result.pvalue:.3f}.")
     return {"pairs": int(len(wide)), "r": round(float(result.statistic), 3), "p_value": float(result.pvalue)}
 
 
@@ -344,11 +358,13 @@ def temperature_optimum(result) -> dict:
     draws = rng.multivariate_normal([linear, quadratic], cov, size=20000)
     draws = draws[draws[:, 1] > 0]
     optimum = -draws[:, 0] / (2 * draws[:, 1])
-    return {
+    result = {
         "optimum_f": round(float(-linear / (2 * quadratic)), 1),
         "optimum_ci": [round(float(np.quantile(optimum, 0.05)), 1), round(float(np.quantile(optimum, 0.95)), 1)],
         "share_draws_convex": round(float(len(draws) / 20000), 3),
     }
+    print(f"The quadratic temperature curve bottoms out at {result['optimum_f']}°F (90% CI {result['optimum_ci'][0]} to {result['optimum_ci'][1]}°F).")
+    return result
 
 
 COLD_PENALTY_SPECS = {
@@ -386,7 +402,7 @@ def cold_penalty_decomposition(df: pd.DataFrame, cold: float = 35, mild: float =
             }
         )
     correlations = work[["temperature_f", "season_ride_number", "day_of_year"]].corr(method="spearman")
-    return {
+    result = {
         "cold_f": cold,
         "mild_f": mild,
         "n_work_trips": int(len(work)),
@@ -395,6 +411,11 @@ def cold_penalty_decomposition(df: pd.DataFrame, cold: float = 35, mild: float =
         "spearman_temp_ride": round(float(correlations.loc["temperature_f", "season_ride_number"]), 3),
         "spearman_temp_doy": round(float(correlations.loc["temperature_f", "day_of_year"]), 3),
     }
+    for step in rows:
+        print(f"Cold penalty at {cold}°F vs {mild}°F, {step['model'].lower()}: {step['penalty_minutes'] * 60:.0f} s (90% CI {step['ci_low'] * 60:.0f} to {step['ci_high'] * 60:.0f} s, R² {step['r_squared']}).")
+    print(f"Share of the raw cold penalty explained by fitness and the calendar: {result['share_explained_by_fitness']:.0%}.")
+    print(f"Spearman correlation of temperature with ride number: {result['spearman_temp_ride']}, and with day of year: {result['spearman_temp_doy']}.")
+    return result
 
 
 def route_comparison(df: pd.DataFrame) -> dict:
@@ -406,7 +427,7 @@ def route_comparison(df: pd.DataFrame) -> dict:
     window_d = same_window.loc[same_window["route"] == "D", "minutes"]
     mann_whitney = stats.mannwhitneyu(route_d, route_a, alternative="less")
     window_test = stats.mannwhitneyu(window_d, window_a, alternative="less")
-    return {
+    result = {
         "work_route_a_mean": round(float(route_a.mean()), 2),
         "work_route_d_mean": round(float(route_d.mean()), 2),
         "work_route_d_n": int(len(route_d)),
@@ -416,6 +437,9 @@ def route_comparison(df: pd.DataFrame) -> dict:
         "autumn_2019_route_a_n": int(len(window_a)),
         "autumn_2019_mann_whitney_p": float(window_test.pvalue),
     }
+    print(f"To work, route D averaged {result['work_route_d_mean']:.2f} min (n = {result['work_route_d_n']}) vs route A at {result['work_route_a_mean']:.2f} min; Mann-Whitney p = {result['mann_whitney_p']:.3f}.")
+    print(f"In the same autumn-2019 window: A {result['autumn_2019_route_a_mean']:.2f} min vs D {result['autumn_2019_route_d_mean']:.2f} min, p = {result['autumn_2019_mann_whitney_p']:.2f}.")
+    return result
 
 
 def _season_effects(data: pd.DataFrame, formula: str) -> list[dict]:
@@ -459,7 +483,7 @@ def long_term_trend(df: pd.DataFrame) -> dict:
         primary,
         "minutes ~ is_home + temperature_f + I(temperature_f ** 2) + season_ride_number + log_days_since_last_ride + C(season)",
     )
-    return {
+    result = {
         "kendall_tau": round(float(tau.statistic), 3),
         "kendall_p": float(tau.pvalue),
         "theil_sen_seconds_per_year": round(float(slope * 60), 1),
@@ -471,17 +495,34 @@ def long_term_trend(df: pd.DataFrame) -> dict:
         "season_effects": effects,
         "season_effects_fitness_adjusted": effects_fitness,
     }
+    print(f"Naive trend: {result['naive_years_coef_seconds']:+} s per year (p = {result['naive_years_p']:.3f}). After controlling for ride number and layoff: {result['adjusted_years_coef_seconds']:+} s per year (p = {result['adjusted_years_p']:.3f}).")
+    print(f"Theil-Sen slope on residuals: {result['theil_sen_seconds_per_year']:+} s per year, Kendall's tau = {result['kendall_tau']} (p = {result['kendall_p']:.3f}).")
+    for plain, fitness in list(zip(effects, effects_fitness))[1:]:
+        print(f"Season {plain['season']} vs 2019: {plain['estimate'] * 60:+.0f} s adjusted for direction and temperature, {fitness['estimate'] * 60:+.0f} s once fitness is added.")
+    return result
 
 
 def weekday_test(df: pd.DataFrame, residuals: pd.Series) -> dict:
     groups = [residuals[df["weekday"] == day].to_numpy() for day in df["weekday"].unique()]
     groups = [group for group in groups if len(group) >= 5]
     result = stats.kruskal(*groups)
+    print(f"Kruskal-Wallis test across weekdays: H = {result.statistic:.2f}, p = {result.pvalue:.2f}.")
     return {"kruskal_h": round(float(result.statistic), 2), "p_value": float(result.pvalue)}
 
 
 def run_inference(df: pd.DataFrame) -> dict:
     ols = adjusted_ols(df)
+    print(f"Adjusted OLS: R² = {ols.rsquared:.3f}, residual SD = {np.sqrt(ols.scale) * 60:.0f} s.")
+    for term, label, scale, unit in [
+        ("is_home", "riding home", 1, "min"),
+        ("season_ride_number", "each extra ride in the season", 60, "s"),
+        ("log_days_since_last_ride", "each log-day off the bike", 60, "s"),
+        ("years_elapsed", "each year", 60, "s"),
+        ("C(route, Treatment('A'))[T.D]", "route D instead of A", 60, "s"),
+        ("C(route, Treatment('A'))[T.B]", "route B instead of A", 1, "min"),
+    ]:
+        low, high = ols.conf_int().loc[term]
+        print(f"Adjusted effect of {label}: {ols.params[term] * scale:+.2f} {unit} (95% CI {low * scale:+.2f} to {high * scale:+.2f}, p = {ols.pvalues[term]:.1e}).")
     return {
         "direction_gap": direction_gap_tests(df),
         "ols": {
@@ -621,6 +662,8 @@ def cross_validate(df: pd.DataFrame, n_splits: int = 5, repeats: int = 5) -> tup
         .sort_values(("rmse", "mean"))
     )
     summary.columns = [f"{metric}_{stat}" for metric, stat in summary.columns]
+    for model, row in summary.iterrows():
+        print(f"Cross-validated RMSE for {model}: {row['rmse_mean'] * 60:.0f} s (MAE {row['mae_mean'] * 60:.0f} s, R² {row['r2_mean']:.3f}).")
     out_of_fold = {name: values.mean(axis=0) for name, values in oof.items()}
     return summary.reset_index(), out_of_fold
 
@@ -643,7 +686,11 @@ def forward_validation(df: pd.DataFrame, min_training_seasons: int = 2) -> pd.Da
                     "mae": float(mean_absolute_error(y[test], prediction)),
                 }
             )
-    return pd.DataFrame(records)
+    forward = pd.DataFrame(records)
+    for model, rows in forward.groupby("model"):
+        seasons = ", ".join(f"{int(r.season)}: {r.mae * 60:.0f} s" for r in rows.itertuples())
+        print(f"Forward-chaining MAE for {model}: {seasons}.")
+    return forward
 
 
 def _feature_grid(series: pd.Series, points: int = 60) -> np.ndarray:
@@ -817,12 +864,14 @@ def conformal_study(df: pd.DataFrame, estimator_factory, alpha: float = 0.1, rep
         prediction = model.predict(X[test])
         coverage.append(float(np.mean(np.abs(y[test] - prediction) <= q)))
         widths.append(float(2 * q))
-    return {
+    result = {
         "target_coverage": 1 - alpha,
         "empirical_coverage": round(float(np.mean(coverage)), 3),
         "coverage_p10_p90": [round(float(np.quantile(coverage, 0.1)), 3), round(float(np.quantile(coverage, 0.9)), 3)],
         "mean_interval_width_minutes": round(float(np.mean(widths)), 2),
     }
+    print(f"Split-conformal 90% intervals covered {result['empirical_coverage']:.0%} of held-out trips across {reps} random splits (average width {result['mean_interval_width_minutes']} min).")
+    return result
 
 
 def conformal_quantile(y: np.ndarray, oof_prediction: np.ndarray, alpha: float = 0.1) -> float:
@@ -1020,7 +1069,7 @@ def wind_analysis(df: pd.DataFrame, reps: int = 500) -> dict:
         for destination, group in data.groupby("destination")
     }
     hours = df.groupby("destination")["departure_hour"].value_counts().sort_index()
-    return {
+    result = {
         "source": "Open-Meteo historical reanalysis (ERA5), hourly, central Pittsburgh",
         "work_bearing_deg": bearing,
         "work_bearing_ci": [round(bearing + float(np.percentile(boot_bearings, 5))), round(bearing + float(np.percentile(boot_bearings, 95)))],
@@ -1042,6 +1091,15 @@ def wind_analysis(df: pd.DataFrame, reps: int = 500) -> dict:
         "departure_hours": {destination: {int(h): int(n) for h, n in hours[destination].items()} for destination in ["Work", "Home"]},
         "points": json.loads(points.assign(date=points["date"].dt.strftime("%Y-%m-%d")).round(3).to_json(orient="records")),
     }
+    print(f"Departure hours matched with a median temperature gap of {result['temperature_match_error_median']}°F (correlation {result['temperature_match_correlation']}).")
+    print(f"Best-fitting bearing for the ride to work: {result['work_bearing_deg']:.0f}° (90% CI {result['work_bearing_ci'][0]} to {result['work_bearing_ci'][1]}°).")
+    print(f"Each mph of headwind adds {result['headwind_seconds_per_mph']} s (90% CI {result['headwind_seconds_ci'][0]} to {result['headwind_seconds_ci'][1]} s), p = {result['headwind_p_value']:.1e}.")
+    print(f"R² goes from {result['r_squared_without_wind']} without wind to {result['r_squared_with_wind']} with it, and the home penalty moves from {result['home_penalty_without_wind']} to {result['home_penalty_with_wind']} min.")
+    for destination, row in by_direction.items():
+        print(f"Rides to {destination.lower()} averaged {row['mean_wind_mph']} mph of wind from {row['wind_from_deg']:.0f}°, a mean headwind of {row['mean_headwind_mph']:+} mph.")
+    for term, row in extras.items():
+        print(f"Adding {term.replace('_', ' ')}: coefficient {row['estimate']:+.4f}, p = {row['p_value']:.3f}.")
+    return result
 
 
 def _clock(minutes: float) -> str:
@@ -1251,7 +1309,7 @@ def run(cv_repeats: int = 5, bootstrap_reps: int = 300, conformal_reps: int = 60
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     df.to_csv(PROCESSED_DIR / "trips_features.csv", index=False)
 
-    print("descriptive statistics")
+    print("\nDescriptive statistics")
     overview = {
         "headline": headline_metrics(df),
         "paired": paired_day_summary(df),
@@ -1266,28 +1324,33 @@ def run(cv_repeats: int = 5, bootstrap_reps: int = 300, conformal_reps: int = 60
         "pairs": _records(paired_days(df)[["date", "minutes_work", "minutes_home", "gap_minutes", "temp_rise", "route_work", "route_home"]].round({"minutes_work": 3, "minutes_home": 3, "gap_minutes": 3})),
     }
 
-    print("statistical inference")
+    print("\nStatistical tests")
     stats_results = run_inference(df)
 
-    print("weather and wind")
+    print("\nWeather and wind")
     weather_trips = attach_weather(df, load_weather(df))
     weather_trips.to_csv(WEATHER_TRIPS_FILE, index=False)
     weather_results = wind_analysis(weather_trips)
 
-    print("cross-validating model zoo")
+    print("\nCross-validating the models")
     cv_summary, oof = cross_validate(df, repeats=cv_repeats)
     forward = forward_validation(df)
 
-    print("fitting interpretable learners")
+    print("\nInterpreting the models")
     X, y = df[MODEL_FEATURES], df["minutes"].to_numpy()
     gbm = make_gbm().fit(X, y)
     gp = make_gp().fit(X, y)
     gam = make_gam().fit(X, y)
     ensemble = model_zoo()["Ensemble (GAM + GP + GBM)"].fit(X, y)
     shap_results = shap_analysis(gbm, df)
+    for row in shap_results["importance"]:
+        print(f"Average SHAP contribution of {row['label'][0].lower() + row['label'][1:]}: {row['mean_abs_shap'] * 60:.1f} s.")
 
     interpretation = {"shap": {key: value for key, value in shap_results.items() if key != "values"}}
     interpretation["gp_relevance"] = gp_relevance(gp)
+    for row in interpretation["gp_relevance"]:
+        if row["relevance"] is not None:
+            print(f"Gaussian process relevance of {row['label'][0].lower() + row['label'][1:]}: {row['relevance']:.2f}.")
     interpretation["permutation"] = {
         "Gaussian process (ARD)": permutation_importances(gp, df),
         "Gradient boosting (LightGBM)": permutation_importances(gbm, df),
@@ -1309,7 +1372,7 @@ def run(cv_repeats: int = 5, bootstrap_reps: int = 300, conformal_reps: int = 60
     interpretation["surface"] = surface_temperature_by_ride(ensemble, df)
     interpretation["season_learning"] = _season_learning_curve(df)
 
-    print("conformal prediction")
+    print("\nPrediction intervals")
     ranked = cv_summary.set_index("model").loc[PLANNER_CANDIDATES].sort_values("rmse_mean")
     planner_name = ranked.index[0]
     factories = {
@@ -1332,6 +1395,9 @@ def run(cv_repeats: int = 5, bootstrap_reps: int = 300, conformal_reps: int = 60
     for trip in trips:
         trip["z"] = round(trip["residual"] / residual_sd, 2)
     anomalies = sorted(trips, key=lambda trip: -abs(trip["z"]))[:8]
+    print(f"Conformal 90% half-width from out-of-fold errors: ±{half_width * 60:.0f} s using the {planner_name}.")
+    for trip in anomalies[:5]:
+        print(f"Surprise on {trip['date']} riding {'home' if trip['destination'] == 'Home' else 'to work'} on route {trip['route']}: actual {trip['minutes']:.2f} min vs expected {trip['predicted']:.2f} min.")
 
     modelling = {
         "features": [{"feature": f, "label": FEATURE_LABELS[f]} for f in MODEL_FEATURES],
@@ -1364,7 +1430,7 @@ def run(cv_repeats: int = 5, bootstrap_reps: int = 300, conformal_reps: int = 60
 
     write_context(df, results)
 
-    print(f"done in {time.time() - started:.0f}s")
+    print(f"\nFinished in {time.time() - started:.0f} seconds.")
     return results
 
 
