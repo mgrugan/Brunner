@@ -85,7 +85,7 @@
           <h1>The<br>Commute<br><em>Decoded</em></h1>
         </div>
 
-        <div id="bike" class="bike-wrap" aria-hidden="true"></div>
+        <div id="bike" class="bike-wrap" aria-hidden="true"><img class="bike-poster" src="assets/bike-poster.webp" alt=""></div>
 
         <div class="hero-outro" aria-hidden="true">
           <p>Now, the numbers<span>Keep scrolling</span></p>
@@ -98,15 +98,9 @@
           <li><a href="#planner">Planner</a></li>
         </ul>
 
-        <div class="hero-card">
-          <p class="hero-card-index">/01</p>
-          <div class="hero-card-rule"></div>
-          <p class="hero-card-title">Seven seasons, one commute</p>
-          <p class="hero-card-body">143 commutes logged ride by ride between 2019 and 2026. What they say about speed, weather and habit.</p>
-        </div>
 
         <div class="hero-foot">
-          <p class="hero-count"><span id="hero-count">143</span><sup>rides</sup></p>
+          <span class="hero-foot-spacer"></span>
           <p class="hero-scroll-hint"><span></span>Scroll to ride</p>
           <a href="#summary" class="hero-plus" aria-label="Jump to the overview">+</a>
         </div>
@@ -385,7 +379,7 @@
           <div>
             <p class="eyebrow">Methods</p>
             <h3 class="mt-3 font-display text-2xl font-semibold">How the analysis was built</h3>
-            <p class="mt-3 text-sm leading-relaxed text-brand-muted">A reproducible Python pipeline (<span class="font-mono text-brand-ink">python -m commute</span>) reads the workbook, builds the features, runs the statistics and models, writes every number on this page to <span class="font-mono text-brand-ink">docs/data/analysis.js</span>, and renders the static figures for the written report.</p>
+            <p class="mt-3 text-sm leading-relaxed text-brand-muted">A reproducible Python pipeline (<span class="font-mono text-brand-ink">python commute_analysis.py</span>) reads the workbook, builds the features, runs the statistics and models, writes every number on this page to <span class="font-mono text-brand-ink">docs/data/analysis.js</span>, and renders the static figures for the written report.</p>
           </div>
           <ul class="method-list lg:col-span-2" id="method-list"></ul>
         </div>
@@ -410,6 +404,7 @@
   <script src="data/analysis.js"></script>
   <script src="js/charts.js"></script>
   <script src="js/app.js"></script>
-  <script src="js/bike.js"></script>
+  <script type="module" src="js/bike.js"></script>
+  <script type="module" src="js/ask.js"></script>
 </body>
 </html>

@@ -479,7 +479,6 @@ function init() {
   renderCharts();
   bindScroll();
   bindMenu();
-  document.getElementById("hero-count").textContent = D.overview.headline.trips;
   let width = window.innerWidth;
   window.addEventListener("resize", () => {
     if (window.innerWidth === width) return;
