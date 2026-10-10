@@ -1086,6 +1086,20 @@ def wind_cv(primary: pd.DataFrame, bearings: np.ndarray, n_splits: int = 5, repe
     }
 
 
+def bearing_profile(primary: pd.DataFrame, bearings: np.ndarray, n_splits: int = 5, repeats: int = 5) -> dict:
+    y = primary["minutes"].to_numpy()
+    base = _wind_design(primary)
+    designs = [np.c_[base, headwind(primary, bearing)] for bearing in bearings]
+    predictions = np.zeros((len(bearings), repeats, len(primary)))
+    for repeat, _, train, test in grouped_folds(primary["date"], n_splits, repeats):
+        for index, X in enumerate(designs):
+            beta, *_ = np.linalg.lstsq(X[train], y[train], rcond=None)
+            predictions[index, repeat, test] = X[test] @ beta
+    total = float(((y - y.mean()) ** 2).sum())
+    r_squared = [round(float(np.mean([1 - float(((y - row) ** 2).sum()) / total for row in rows])), 4) for rows in predictions]
+    return {"bearings": [int(b) for b in bearings], "cv_r_squared": r_squared}
+
+
 ABLATION_STEPS = [
     ("direction only", "minutes ~ is_home"),
     ("+ temperature", " + temperature_f + I(temperature_f ** 2)"),
@@ -1152,6 +1166,7 @@ def wind_analysis(df: pd.DataFrame, reps: int = 500) -> dict:
         extras[term] = {"estimate": round(float(fitted.params[term]), 4), "p_value": float(fitted.pvalues[term])}
 
     cross_validated = wind_cv(primary, bearings)
+    profile = bearing_profile(primary, bearings)
     adjusted = smf.ols(base_formula, data=data).fit()
     points = data.assign(adjusted_seconds=adjusted.resid * 60)[["date", "destination", "headwind", "adjusted_seconds", "wind_speed_10m", "wind_direction_10m"]]
 
@@ -1181,6 +1196,7 @@ def wind_analysis(df: pd.DataFrame, reps: int = 500) -> dict:
         "cv_rmse_with_wind_s": cross_validated["with_wind"]["cv_rmse_s"],
         "wind_better_share": cross_validated["wind_better_share"],
         "fold_bearing_range": cross_validated["fold_bearing_range"],
+        "bearing_profile": profile,
         "home_penalty_without_wind": round(float(base.params["is_home"]), 3),
         "home_penalty_with_wind": round(float(with_wind.params["is_home"]), 3),
         "headwind_p_value": float(with_wind.pvalues["headwind"]),

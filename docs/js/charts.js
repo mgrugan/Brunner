@@ -536,6 +536,85 @@ const Charts = {
     });
   },
 
+  windCompass(selector, weather) {
+    const container = d3.select(selector);
+    container.selectAll("*").remove();
+    const width = container.node().clientWidth;
+    const height = container.node().clientHeight;
+    const size = Math.min(width, height);
+    const svg = container.append("svg").attr("width", width).attr("height", height);
+    const g = svg.append("g").attr("transform", `translate(${width / 2},${height / 2})`);
+    const outer = size / 2 - 30;
+    const inner = outer * 0.28;
+    const fits = weather.bearing_profile.cv_r_squared;
+    const bearings = weather.bearing_profile.bearings;
+    const radius = d3.scaleLinear().domain(d3.extent(fits)).range([inner, outer]);
+    const toXY = (deg, r) => [Math.sin((deg * Math.PI) / 180) * r, -Math.cos((deg * Math.PI) / 180) * r];
+    [inner, (inner + outer) / 2, outer].forEach((r) => g.append("circle").attr("r", r).attr("fill", "none").attr("stroke", "rgba(255,255,255,0.07)"));
+    [["N", 0], ["E", 90], ["S", 180], ["W", 270]].forEach(([label, deg]) => {
+      const [x, y] = toXY(deg, outer + 16);
+      g.append("text").attr("x", x).attr("y", y).attr("text-anchor", "middle").attr("dominant-baseline", "middle").attr("fill", Palette.muted).attr("font-size", 11).attr("letter-spacing", "0.15em").text(label);
+    });
+    const line = d3.lineRadial().angle((d) => (d.b * Math.PI) / 180).radius((d) => radius(d.r)).curve(d3.curveCardinalClosed);
+    const rows = bearings.map((b, i) => ({ b, r: fits[i] }));
+    g.append("path").datum(rows).attr("d", line).attr("fill", "rgba(69,180,207,0.12)").attr("stroke", Palette.sky).attr("stroke-width", 2);
+    const arrow = (deg, length, color, label, dy) => {
+      const [x, y] = toXY(deg, length);
+      g.append("line").attr("x1", 0).attr("y1", 0).attr("x2", x).attr("y2", y).attr("stroke", color).attr("stroke-width", 2.5).attr("stroke-linecap", "round");
+      const head = toXY(deg, length + 1);
+      g.append("circle").attr("cx", head[0]).attr("cy", head[1]).attr("r", 4).attr("fill", color);
+      const [lx, ly] = toXY(deg, length + 14);
+      g.append("text").attr("x", lx).attr("y", ly + dy).attr("text-anchor", lx < 0 ? "end" : "start").attr("fill", Palette.ink).attr("font-size", 11).text(label);
+    };
+    arrow(weather.work_bearing_deg, outer * 0.92, Palette.orange, `to work · ${Math.round(weather.work_bearing_deg)}°`, -6);
+    const evening = (weather.by_direction.Home.wind_from_deg + 180) % 360;
+    arrow(evening, outer * 0.55, Palette.sky, "evening wind blows", 12);
+    g.append("circle").attr("r", 3).attr("fill", Palette.ink);
+  },
+
+  ablation(selector, steps) {
+    const frame = createFrame(selector, { top: 8, right: 56, bottom: 36, left: 12 });
+    const { g, width, height } = frame;
+    const y = d3.scaleBand().domain(steps.map((d) => d.step)).range([0, height]).padding(0.45);
+    const low = Math.floor(d3.min(steps, (d) => d.cv_r_squared) * 20) / 20 - 0.05;
+    const x = d3.scaleLinear().domain([low, 1]).range([0, width]);
+    g.append("g").attr("class", "gridlines").attr("transform", `translate(0,${height})`).call(d3.axisBottom(x).ticks(5).tickSize(-height).tickFormat(""));
+    g.append("g").attr("class", "axis").attr("transform", `translate(0,${height})`).call(d3.axisBottom(x).ticks(5).tickFormat(d3.format(".2f")));
+    steps.forEach((step, i) => {
+      const top = y(step.step);
+      const gain = step.rmse_change_s === null ? 0 : -step.rmse_change_s;
+      const color = gain >= 3 ? Palette.orange : i === 0 ? Palette.sky : Palette.muted;
+      g.append("text").attr("x", 0).attr("y", top - 6).attr("fill", Palette.ink).attr("font-size", 12).attr("font-weight", 600).text(step.step);
+      g.append("rect")
+        .attr("x", 0)
+        .attr("y", top)
+        .attr("height", y.bandwidth())
+        .attr("rx", 4)
+        .attr("fill", color)
+        .attr("width", 0)
+        .on("mouseenter", (event) => Tooltip.show(event, step.step, [
+          ["Out-of-sample R²", step.cv_r_squared.toFixed(3)],
+          ["Held-out error", `${Math.round(step.cv_rmse_s)}s`],
+          ["Training error", `${Math.round(step.train_rmse_s)}s`],
+        ]))
+        .on("mousemove", Tooltip.move)
+        .on("mouseleave", Tooltip.hide)
+        .transition()
+        .duration(900)
+        .delay(i * 120)
+        .attr("width", x(step.cv_r_squared));
+      const change = step.rmse_change_s === null ? "" : `   error ${step.rmse_change_s > 0 ? "+" : "−"}${Math.abs(step.rmse_change_s).toFixed(1)}s`;
+      g.append("text")
+        .attr("x", x(step.cv_r_squared) + 6)
+        .attr("y", top + y.bandwidth() / 2)
+        .attr("dominant-baseline", "middle")
+        .attr("fill", Palette.ink)
+        .attr("font-family", "Jost")
+        .attr("font-size", 11)
+        .text(`${step.cv_r_squared.toFixed(3)}${change}`);
+    });
+  },
+
   windScatter(selector, weather) {
     const frame = createFrame(selector, { top: 16, right: 16, bottom: 40, left: 48 });
     const { g, width, height } = frame;
