@@ -408,6 +408,10 @@ body {
 }
 
 .hero-scroll-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 4.5vh;
+  transform: translateX(-50%);
   display: flex;
   align-items: center;
   gap: 0.9rem;
@@ -1248,4 +1252,10 @@ body {
     right: 1rem;
     bottom: 1rem;
   }
+}
+
+.brand-wheel {
+  display: block;
+  will-change: transform;
+  filter: drop-shadow(0 0 10px rgba(242, 123, 56, 0.18));
 }

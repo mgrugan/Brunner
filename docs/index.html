@@ -6,7 +6,7 @@
   <title>The Commute, Decoded</title>
   <meta name="ask-endpoint" content="https://brunner-bice.vercel.app/api/ask">
   <meta name="description" content="Seven seasons of bicycle commuting analysed with statistics and machine learning.">
-  <link rel="icon" type="image/png" href="assets/brand-mark.png">
+  <link rel="icon" type="image/svg+xml" href="assets/wheel-mark.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Jost:wght@200;300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -115,7 +115,20 @@
         <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
       </button>
       <a href="#top" class="justify-self-center" aria-label="Back to top">
-        <img src="assets/brand-mark.png" alt="" class="h-10 w-10 transition duration-500 hover:rotate-[20deg]">
+        <svg viewBox="0 0 120 120" aria-hidden="true" class="brand-wheel h-10 w-10">
+  <circle cx="60" cy="60" r="55" fill="none" stroke="#1d2326" stroke-width="7"/>
+  <circle cx="60" cy="60" r="47" fill="none" stroke="#0b0d0e" stroke-width="9"/>
+  <circle cx="60" cy="60" r="49" fill="none" stroke="#f27b38" stroke-width="1.2"/>
+  <g stroke="#59636a" stroke-width="1.6" stroke-linecap="round">
+    <line x1="60" y1="60" x2="60" y2="17"/><line x1="60" y1="60" x2="81.5" y2="22.8"/><line x1="60" y1="60" x2="97.2" y2="38.5"/>
+    <line x1="60" y1="60" x2="103" y2="60"/><line x1="60" y1="60" x2="97.2" y2="81.5"/><line x1="60" y1="60" x2="81.5" y2="97.2"/>
+    <line x1="60" y1="60" x2="60" y2="103"/><line x1="60" y1="60" x2="38.5" y2="97.2"/><line x1="60" y1="60" x2="22.8" y2="81.5"/>
+    <line x1="60" y1="60" x2="17" y2="60"/><line x1="60" y1="60" x2="22.8" y2="38.5"/><line x1="60" y1="60" x2="38.5" y2="22.8"/>
+  </g>
+  <circle cx="60" cy="60" r="8" fill="#15181a" stroke="#2c3236"/>
+  <circle cx="60" cy="60" r="3.5" fill="#f27b38"/>
+  <path d="M60 4.5 A55.5 55.5 0 0 1 105 30" fill="none" stroke="#f27b38" stroke-width="3" stroke-linecap="round"/>
+</svg>
       </a>
       <a href="#planner" class="top-cta justify-self-end">Plan a ride</a>
     </nav>
@@ -169,7 +182,6 @@
         <div class="hero-foot">
           <span class="hero-foot-spacer"></span>
           <p class="hero-scroll-hint"><span></span>Scroll to ride</p>
-          <a href="#summary" class="hero-plus" aria-label="Jump to the overview">+</a>
         </div>
       </div>
     </section>
@@ -460,7 +472,20 @@
 
   <footer class="border-t border-brand-line/60 bg-brand-deep">
     <div class="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 px-4 py-8 text-sm text-brand-muted sm:flex-row sm:px-8">
-      <div class="flex items-center gap-3"><img src="assets/brand-mark.png" alt="" class="h-7 w-7"><span class="uppercase tracking-[0.25em] text-xs">Brunner data science exercise · 2026</span></div>
+      <div class="flex items-center gap-3"><svg viewBox="0 0 120 120" aria-hidden="true" class="footer-wheel h-7 w-7">
+  <circle cx="60" cy="60" r="55" fill="none" stroke="#1d2326" stroke-width="7"/>
+  <circle cx="60" cy="60" r="47" fill="none" stroke="#0b0d0e" stroke-width="9"/>
+  <circle cx="60" cy="60" r="49" fill="none" stroke="#f27b38" stroke-width="1.2"/>
+  <g stroke="#59636a" stroke-width="1.6" stroke-linecap="round">
+    <line x1="60" y1="60" x2="60" y2="17"/><line x1="60" y1="60" x2="81.5" y2="22.8"/><line x1="60" y1="60" x2="97.2" y2="38.5"/>
+    <line x1="60" y1="60" x2="103" y2="60"/><line x1="60" y1="60" x2="97.2" y2="81.5"/><line x1="60" y1="60" x2="81.5" y2="97.2"/>
+    <line x1="60" y1="60" x2="60" y2="103"/><line x1="60" y1="60" x2="38.5" y2="97.2"/><line x1="60" y1="60" x2="22.8" y2="81.5"/>
+    <line x1="60" y1="60" x2="17" y2="60"/><line x1="60" y1="60" x2="22.8" y2="38.5"/><line x1="60" y1="60" x2="38.5" y2="22.8"/>
+  </g>
+  <circle cx="60" cy="60" r="8" fill="#15181a" stroke="#2c3236"/>
+  <circle cx="60" cy="60" r="3.5" fill="#f27b38"/>
+  <path d="M60 4.5 A55.5 55.5 0 0 1 105 30" fill="none" stroke="#f27b38" stroke-width="3" stroke-linecap="round"/>
+</svg><span class="uppercase tracking-[0.25em] text-xs">Brunner data science exercise · 2026</span></div>
       <span id="generated"></span>
     </div>
   </footer>
